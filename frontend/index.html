@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlowChat | Premium Real-time Messaging</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Login View -->
+        <div id="login-view" class="view">
+            <div class="login-card">
+                <div class="brand">
+                    <i class="ph-fill ph-chat-circle-dots"></i>
+                    <h1>GlowChat</h1>
+                </div>
+                <p class="subtitle">Connect with your friends in real-time</p>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" placeholder="Enter your username" required>
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" id="login-btn">
+                        <span>Sign In</span>
+                        <i class="ph ph-arrow-right"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Chat View -->
+        <div id="chat-view" class="view hidden">
+            <aside class="sidebar">
+                <header class="sidebar-header">
+                    <div class="user-profile">
+                        <div class="avatar" id="current-user-avatar">?</div>
+                        <div class="user-info">
+                            <h3 id="current-username">User Name</h3>
+                            <span class="status-online">Online</span>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <button id="new-chat-btn" title="New Chat">
+                            <i class="ph ph-plus"></i>
+                        </button>
+                        <button id="logout-btn" title="Logout">
+                            <i class="ph ph-sign-out"></i>
+                        </button>
+                    </div>
+                </header>
+
+                <div class="sidebar-tabs">
+                    <button class="tab-btn active" id="chats-tab" data-tab="chats">
+                        <i class="ph ph-chat-circle"></i>
+                        <span>Chats</span>
+                    </button>
+                    <button class="tab-btn" id="communities-tab" data-tab="communities">
+                        <i class="ph ph-users-three"></i>
+                        <span>Communities</span>
+                    </button>
+                </div>
+
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Search...">
+                </div>
+
+                <div class="tab-content" id="chats-content">
+                    <div class="conversations-list" id="conversations-container">
+                        <!-- Conversations will be injected here -->
+                    </div>
+                </div>
+
+                <div class="tab-content hidden" id="communities-content">
+                    <div class="conversations-list" id="communities-container">
+                        <!-- Communities will be injected here -->
+                    </div>
+                </div>
+            </aside>
+
+            <main class="chat-area">
+                <div id="no-chat-selected" class="empty-state">
+                    <div class="empty-icon">
+                        <i class="ph ph-chats-teardrop"></i>
+                    </div>
+                    <h2>Select a conversation</h2>
+                    <p>Choose a friend from the sidebar to start chatting.</p>
+                </div>
+
+                <div id="active-chat" class="chat-container hidden">
+                    <header class="chat-header">
+                        <div class="chat-title">
+                            <div class="avatar" id="chat-avatar">?</div>
+                            <div>
+                                <h3 id="chat-with-name">Recipient Name</h3>
+                                <span class="status-text">Online</span>
+                            </div>
+                        </div>
+                        <div class="chat-actions">
+                            <button><i class="ph ph-phone"></i></button>
+                            <button><i class="ph ph-video-camera"></i></button>
+                            <button><i class="ph ph-dots-three-vertical"></i></button>
+                        </div>
+                    </header>
+
+                    <div class="messages-container" id="messages-container">
+                        <!-- Messages will be injected here -->
+                    </div>
+
+                    <footer class="chat-footer">
+                        <button class="attach-btn"><i class="ph ph-plus"></i></button>
+                        <form id="message-form">
+                            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+                            <button type="submit" id="send-btn">
+                                <i class="ph ph-paper-plane-right"></i>
+                            </button>
+                        </form>
+                    </footer>
+                </div>
+            </main>
+        </div>
+
+        <!-- New Chat Modal -->
+        <div id="new-chat-modal" class="modal hidden">
+            <div class="modal-content">
+                <header class="modal-header">
+                    <h3>New Conversation</h3>
+                    <button id="close-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body">
+                    <div class="search-bar">
+                        <i class="ph ph-magnifying-glass"></i>
+                        <input type="text" id="user-search-input" placeholder="Search users...">
+                    </div>
+                    <div id="users-list" class="users-list">
+                        <!-- Users will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
