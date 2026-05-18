@@ -5,13 +5,12 @@ const cors = require('cors');
 require('dotenv').config();
 
 const { sequelize, connectMongoDB } = require('./config/db');
-const { socketAuthMiddleware } = require('./middleware/authMiddleware');
-const chatHandler = require('./socket/chatHandler');
 
 // Routes
-const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
 const conversationRoutes = require('./routes/conversation');
 const communityRoutes = require('./routes/community');
+const socketRoutes = require('./routes/socket');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,13 +27,11 @@ app.use(express.json());
 app.use(express.static('frontend'));
 
 // API Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/communities', communityRoutes);
+app.use('/api/socket', socketRoutes);
 
-// Socket.IO Middleware & Handler
-io.use(socketAuthMiddleware);
-chatHandler(io);
 
 // Connect Databases and Start Server
 const startServer = async () => {
@@ -43,9 +40,6 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ MySQL Connected');
     
-    // Sync models (optional, be careful with existing tables)
-    // await sequelize.sync(); 
-
     // Connect MongoDB
     await connectMongoDB();
 

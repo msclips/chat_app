@@ -3,12 +3,25 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const Message = require('../models/Message');
-const { authMiddleware } = require('../middleware/authMiddleware');
+
+/**
+ * Helper to extract user identity directly from request headers, body, or query parameters.
+ * Eliminates the need for any authentication middleware.
+ */
+function getRequestUser(req) {
+  const userId = req.headers['x-user-id'] || req.body.userId || req.query.userId || req.body.id || req.query.id;
+  const username = req.headers['x-user-name'] || req.body.username || req.query.username || req.body.user_name || req.query.user_name;
+
+  return {
+    id: userId ? (isNaN(userId) ? userId : Number(userId)) : 1,
+    user_name: username || 'Guest'
+  };
+}
 
 // Create or get a private conversation
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', async (req, res) => {
   const { participantId } = req.body;
-  const userId = req.user.id;
+  const currentUser = getRequestUser(req);
 
   if (!participantId) {
     return res.status(400).json({ message: 'Participant ID is required' });
@@ -24,13 +37,13 @@ router.post('/', authMiddleware, async (req, res) => {
     // Check if conversation already exists between these two users
     let conversation = await Conversation.findOne({
       type: 'private',
-      'participants.userId': { $all: [userId, participantId] }
+      'participants.userId': { $all: [currentUser.id, participantId] }
     });
 
     if (!conversation) {
       conversation = new Conversation({
         participants: [
-          { userId: userId, username: req.user.user_name },
+          { userId: currentUser.id, username: currentUser.user_name },
           { userId: participantId, username: participant.user_name }
         ],
         type: 'private'
@@ -46,10 +59,11 @@ router.post('/', authMiddleware, async (req, res) => {
 });
 
 // List user's conversations
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', async (req, res) => {
+  const currentUser = getRequestUser(req);
   try {
     const conversations = await Conversation.find({
-      'participants.userId': req.user.id
+      'participants.userId': currentUser.id
     }).sort({ updatedAt: -1 });
 
     res.json(conversations);
@@ -60,7 +74,7 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // Get messages for a conversation
-router.get('/:id/messages', authMiddleware, async (req, res) => {
+router.get('/:id/messages', async (req, res) => {
   try {
     console.log('Fetching messages for conversation:', req.params.id);
     const messages = await Message.find({ conversationId: req.params.id })

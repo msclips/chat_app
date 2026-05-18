@@ -1,18 +1,15 @@
 const API_URL = window.location.origin;
 let socket = null;
 let currentUser = null;
-let currentToken = null;
 let activeConversationId = null;
 let activeCommunityId = null;
 let conversations = [];
 let communities = [];
 let allUsers = [];
 
-
 // DOM Elements
 const loginView = document.getElementById('login-view');
 const chatView = document.getElementById('chat-view');
-const loginForm = document.getElementById('login-form');
 const conversationsContainer = document.getElementById('conversations-container');
 const communitiesContainer = document.getElementById('communities-container');
 const messagesContainer = document.getElementById('messages-container');
@@ -33,64 +30,76 @@ const communitiesTab = document.getElementById('communities-tab');
 const chatsContent = document.getElementById('chats-content');
 const communitiesContent = document.getElementById('communities-content');
 
-// --- Initialization ---
-
-// Check for existing session
-const savedToken = localStorage.getItem('token');
-const savedUser = localStorage.getItem('user');
-
-if (savedToken && savedUser) {
-    currentToken = savedToken;
-    currentUser = JSON.parse(savedUser);
-    showChatView();
+/**
+ * Helper to generate request headers with user identity.
+ * Bypasses all Bearer/JWT tokens by sending direct identity headers.
+ */
+function getHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'X-User-Id': currentUser ? currentUser.id : '',
+        'X-User-Name': currentUser ? currentUser.user_name : ''
+    };
 }
 
-// --- Auth Functions ---
+// --- Initialization ---
 
-loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const user_name = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-    const loginBtn = document.getElementById('login-btn');
-
-    try {
-        loginBtn.disabled = true;
-        loginBtn.innerHTML = '<span>Signing In...</span>';
-
-        const response = await fetch(`${API_URL}/api/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_name, password })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            currentToken = data.token;
-            currentUser = data.user;
-            localStorage.setItem('token', currentToken);
-            localStorage.setItem('user', JSON.stringify(currentUser));
-            showChatView();
-        } else {
-            alert(data.message || 'Login failed');
-        }
-    } catch (err) {
-        console.error('Login error:', err);
-        alert('Could not connect to server');
-    } finally {
-        loginBtn.disabled = false;
-        loginBtn.innerHTML = '<span>Sign In</span><i class="ph ph-arrow-right"></i>';
+async function initApp() {
+    // Hide login view immediately
+    if (loginView) {
+        loginView.style.display = 'none';
+        loginView.classList.add('hidden');
     }
-});
+
+    const savedUser = localStorage.getItem('user');
+
+    if (savedUser) {
+        try {
+            currentUser = JSON.parse(savedUser);
+            showChatView();
+        } catch (e) {
+            localStorage.removeItem('user');
+            initApp();
+        }
+    } else {
+        // Prompt for a quick chat nickname to directly register
+        let user_name = prompt("Welcome to GlowChat!\nEnter your name to start chatting:");
+        if (!user_name || !user_name.trim()) {
+            user_name = "Guest_" + Math.floor(1000 + Math.random() * 9000);
+        }
+        user_name = user_name.trim();
+
+        try {
+            const response = await fetch(`${API_URL}/api/users/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_name })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                currentUser = data.user;
+                localStorage.setItem('user', JSON.stringify(currentUser));
+                showChatView();
+            } else {
+                alert('Could not join chat: ' + (data.message || 'unknown error'));
+                initApp();
+            }
+        } catch (err) {
+            console.error('App init error:', err);
+            alert('Could not connect to server. Retrying...');
+            setTimeout(initApp, 2000);
+        }
+    }
+}
 
 logoutBtn.addEventListener('click', () => {
-    localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.reload();
 });
 
 function showChatView() {
-    loginView.classList.add('hidden');
     chatView.classList.remove('hidden');
     document.getElementById('current-username').textContent = currentUser.user_name;
     document.getElementById('current-user-avatar').textContent = currentUser.user_name.charAt(0).toUpperCase();
@@ -120,12 +129,16 @@ communitiesTab.addEventListener('click', () => {
 // --- Socket.IO Functions ---
 
 function initSocket() {
+    // Authenticate directly using userId and username parameters (no token)
     socket = io(API_URL, {
-        auth: { token: currentToken }
+        auth: {
+            userId: currentUser.id,
+            username: currentUser.user_name
+        }
     });
 
     socket.on('connect', () => {
-        console.log('✅ Connected to socket');
+        console.log('✅ Connected to socket as:', currentUser.user_name);
     });
 
     socket.on('message:new', (message) => {
@@ -137,7 +150,6 @@ function initSocket() {
     });
 
     socket.on('message:delivered', ({ tempId, message }) => {
-        // Find and update the temporary message if needed
         const tempMsg = document.querySelector(`[data-temp-id="${tempId}"]`);
         if (tempMsg) {
             tempMsg.classList.remove('pending');
@@ -152,9 +164,6 @@ function initSocket() {
 
     socket.on('connect_error', (err) => {
         console.error('Socket connection error:', err.message);
-        if (err.message.includes('Authentication')) {
-            logoutBtn.click();
-        }
     });
 }
 
@@ -163,12 +172,11 @@ function initSocket() {
 async function fetchConversations() {
     try {
         const response = await fetch(`${API_URL}/api/conversations`, {
-            headers: { 'Authorization': `Bearer ${currentToken}` }
+            headers: getHeaders()
         });
         conversations = await response.json();
         renderConversations();
         
-        // Auto-select the first conversation if none active
         if (!activeConversationId && conversations.length > 0) {
             const firstConv = conversations[0];
             const otherParticipant = firstConv.participants.find(p => p.userId !== currentUser.id);
@@ -176,7 +184,6 @@ async function fetchConversations() {
             selectConversation(firstConv._id, name);
         }
 
-        // Join all conversation rooms
         if (conversations.length > 0) {
             const ids = conversations.map(c => c._id);
             socket.emit('conversations:join', ids);
@@ -189,7 +196,7 @@ async function fetchConversations() {
 async function fetchCommunities() {
     try {
         const response = await fetch(`${API_URL}/api/communities`, {
-            headers: { 'Authorization': `Bearer ${currentToken}` }
+            headers: getHeaders()
         });
         communities = await response.json();
         renderCommunities();
@@ -200,8 +207,8 @@ async function fetchCommunities() {
 
 async function fetchUsers() {
     try {
-        const response = await fetch(`${API_URL}/api/auth/users`, {
-            headers: { 'Authorization': `Bearer ${currentToken}` }
+        const response = await fetch(`${API_URL}/api/users`, {
+            headers: getHeaders()
         });
         allUsers = await response.json();
         renderUsers();
@@ -289,12 +296,12 @@ function renderUsers(filter = '') {
 
 async function fetchMessages(conversationId) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
         console.log(`Fetching messages for ${conversationId}...`);
         const response = await fetch(`${API_URL}/api/conversations/${conversationId}/messages`, {
-            headers: { 'Authorization': `Bearer ${currentToken}` },
+            headers: getHeaders(),
             signal: controller.signal
         });
         
@@ -303,7 +310,6 @@ async function fetchMessages(conversationId) {
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
         
         const messages = await response.json();
-        console.log(`Received ${messages.length} messages`);
         messagesContainer.innerHTML = '';
         
         if (messages.length === 0) {
@@ -323,10 +329,7 @@ async function startConversation(participantId, username) {
     try {
         const response = await fetch(`${API_URL}/api/conversations`, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentToken}`
-            },
+            headers: getHeaders(),
             body: JSON.stringify({ participantId })
         });
         
@@ -335,11 +338,7 @@ async function startConversation(participantId, username) {
         if (response.ok) {
             newChatModal.classList.add('hidden');
             activeConversationId = conversation._id;
-            
-            // Re-fetch conversations to include the new one and join its room
             await fetchConversations();
-            
-            // Select the conversation
             selectConversation(conversation._id, username);
         } else {
             alert(conversation.message || 'Error starting conversation');
@@ -356,7 +355,6 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     chatWithName.textContent = name;
     document.getElementById('chat-avatar').textContent = name.charAt(0).toUpperCase();
     
-    // Update avatar color for community
     if (isCommunity) {
         document.getElementById('chat-avatar').style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
         document.querySelector('.status-text').textContent = 'Public Community';
@@ -368,11 +366,9 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     noChatSelected.classList.add('hidden');
     activeChat.classList.remove('hidden');
     
-    // Clear messages and fetch history
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
     
-    // Handle read-only state for communities
     if (!canSend) {
         messageInput.placeholder = "You are not a member of this community";
         messageInput.disabled = true;
@@ -385,12 +381,10 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
         document.getElementById('send-btn').style.opacity = '1';
     }
 
-    // Highlight active item in sidebar
     document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
     renderConversations();
     renderCommunities();
 
-    // Focus input
     if (!messageInput.disabled) messageInput.focus();
 }
 
@@ -398,20 +392,16 @@ async function selectCommunity(groupId, name) {
     try {
         activeCommunityId = groupId;
         
-        // Init/Get community conversation
         const response = await fetch(`${API_URL}/api/communities/${groupId}/init`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${currentToken}` }
+            headers: getHeaders()
         });
         
         const data = await response.json();
         
         if (response.ok) {
             const conversation = data.conversation;
-            
-            // Join the room via socket
             socket.emit('conversations:join', [conversation._id]);
-            
             selectConversation(conversation._id, name, true, data.isMember);
         } else {
             alert(data.message || 'Error joining community');
@@ -439,9 +429,6 @@ function updateConversationPreview(message) {
     if (lastMsgEl) {
         lastMsgEl.textContent = message.content;
     }
-    
-    // Optional: Move conversation to top
-    // fetchConversations(); 
 }
 
 // --- Message Sending ---
@@ -459,14 +446,12 @@ messageForm.addEventListener('submit', (e) => {
         tempId: tempId
     };
 
-    // Optimistic UI update
     appendMessage({
         senderId: currentUser.id,
         content: content,
         createdAt: new Date().toISOString()
     });
     
-    // Add temp ID to the last message element to track it
     messagesContainer.lastElementChild.setAttribute('data-temp-id', tempId);
     messagesContainer.lastElementChild.classList.add('pending');
 
@@ -498,7 +483,6 @@ userSearchInput.addEventListener('input', (e) => {
     renderUsers(e.target.value);
 });
 
-
 // --- Utilities ---
 
 function scrollToBottom() {
@@ -524,3 +508,6 @@ function escapeHTML(str) {
     p.textContent = str;
     return p.innerHTML;
 }
+
+// Trigger initial app startup
+initApp();

@@ -1,15 +1,28 @@
 const express = require('express');
 const router = express.Router();
-const { Op } = require('sequelize');
 const GroupMaster = require('../models/GroupMaster');
 const GroupUser = require('../models/GroupUser');
 const Conversation = require('../models/Conversation');
-const { authMiddleware } = require('../middleware/authMiddleware');
+
+/**
+ * Helper to extract user identity directly from request headers, body, or query parameters.
+ * Eliminates the need for any authentication middleware.
+ */
+function getRequestUser(req) {
+  const userId = req.headers['x-user-id'] || req.body.userId || req.query.userId || req.body.id || req.query.id;
+  const username = req.headers['x-user-name'] || req.body.username || req.query.username || req.body.user_name || req.query.user_name;
+
+  return {
+    id: userId ? (isNaN(userId) ? userId : Number(userId)) : 1,
+    user_name: username || 'Guest'
+  };
+}
 
 // Get all communities
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', async (req, res) => {
+    const currentUser = getRequestUser(req);
     try {
-        console.log('Fetching communities for user:', req.user.id);
+        console.log('Fetching communities for user:', currentUser.id);
         const communities = await GroupMaster.findAll({
             where: { category: 'community' }
         });
@@ -23,7 +36,8 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // Get or Create Community Conversation
-router.post('/:groupId/init', authMiddleware, async (req, res) => {
+router.post('/:groupId/init', async (req, res) => {
+    const currentUser = getRequestUser(req);
     try {
         const { groupId } = req.params;
         const group = await GroupMaster.findByPk(groupId);
@@ -49,7 +63,7 @@ router.post('/:groupId/init', authMiddleware, async (req, res) => {
 
         // Check membership
         const membership = await GroupUser.findOne({
-            where: { group_id: groupId, user_id: req.user.id }
+            where: { group_id: groupId, user_id: currentUser.id }
         });
 
         res.json({ 
@@ -62,12 +76,13 @@ router.post('/:groupId/init', authMiddleware, async (req, res) => {
 });
 
 // Check membership status
-router.get('/:groupId/membership', authMiddleware, async (req, res) => {
+router.get('/:groupId/membership', async (req, res) => {
+    const currentUser = getRequestUser(req);
     try {
         const membership = await GroupUser.findOne({
             where: {
                 group_id: req.params.groupId,
-                user_id: req.user.id
+                user_id: currentUser.id
             }
         });
         res.json({ isMember: !!membership });

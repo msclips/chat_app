@@ -1,9 +1,7 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const GroupUser = require('../models/GroupUser');
-
-// Track online users
-const userSockets = new Map();
+const { addSocket, removeSocket, getSockets } = require('./socketManager');
 
 function chatHandler(io) {
   io.on('connection', (socket) => {
@@ -12,11 +10,8 @@ function chatHandler(io) {
 
     console.log(`✅ Authenticated User connected: ${username} (${userId})`);
 
-    // Track user's socket
-    if (!userSockets.has(userId)) {
-      userSockets.set(userId, new Set());
-    }
-    userSockets.get(userId).add(socket.id);
+    // Register socket in shared manager (also used by REST /api/socket/connect)
+    addSocket(userId, socket.id);
 
     // Join user's existing conversation rooms
     socket.on('conversations:join', async (conversationIds) => {
@@ -112,7 +107,7 @@ function chatHandler(io) {
         if (conversation.type !== 'community') {
             for (const participant of conversation.participants) {
               if (participant.userId !== userId) {
-                const sockets = userSockets.get(participant.userId);
+                const sockets = getSockets(participant.userId);
                 if (sockets) {
                   for (const sid of sockets) {
                     io.to(sid).emit('conversation:updated', {
@@ -134,12 +129,7 @@ function chatHandler(io) {
 
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${username}`);
-      if (userSockets.has(userId)) {
-        userSockets.get(userId).delete(socket.id);
-        if (userSockets.get(userId).size === 0) {
-          userSockets.delete(userId);
-        }
-      }
+      removeSocket(userId, socket.id);
     });
   });
 }
