@@ -18,6 +18,8 @@ function getRequestUser(req) {
   };
 }
 
+const { getSockets } = require('../socket/socketManager');
+
 // Create or get a private conversation
 router.post('/', async (req, res) => {
   const { participantId } = req.body;
@@ -46,9 +48,18 @@ router.post('/', async (req, res) => {
           { userId: currentUser.id, username: currentUser.user_name },
           { userId: participantId, username: participant.user_name }
         ],
-        type: 'private'
+        type: 'private',
+        status: 'pending',
+        initiatorId: currentUser.id
       });
       await conversation.save();
+    } else {
+      // Handle blocked conversation
+      if (conversation.status === 'blocked') {
+        if (conversation.blockedBy !== currentUser.id) {
+          return res.status(403).json({ message: 'You have been blocked by this user.' });
+        }
+      }
     }
 
     res.json(conversation);
@@ -58,12 +69,13 @@ router.post('/', async (req, res) => {
   }
 });
 
-// List user's conversations
+// List user's conversations (hiding blocked ones)
 router.get('/', async (req, res) => {
   const currentUser = getRequestUser(req);
   try {
     const conversations = await Conversation.find({
-      'participants.userId': currentUser.id
+      'participants.userId': currentUser.id,
+      status: { $ne: 'blocked' }
     }).sort({ updatedAt: -1 });
 
     res.json(conversations);
@@ -75,8 +87,22 @@ router.get('/', async (req, res) => {
 
 // Get messages for a conversation
 router.get('/:id/messages', async (req, res) => {
+  const currentUser = getRequestUser(req);
   try {
     console.log('Fetching messages for conversation:', req.params.id);
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) {
+      return res.status(404).send('Conversation not found');
+    }
+
+    // Do not return message history to recipient if pending
+    if (conversation.type === 'private' && conversation.status === 'pending') {
+      if (conversation.initiatorId !== currentUser.id) {
+        console.log('Recipient requested messages for pending conversation, returning empty history.');
+        return res.json([]);
+      }
+    }
+
     const messages = await Message.find({ conversationId: req.params.id })
       .sort({ createdAt: 1 }) // Oldest first for chat history
       .limit(50);
@@ -84,6 +110,68 @@ router.get('/:id/messages', async (req, res) => {
     res.json(messages);
   } catch (err) {
     console.error('Error fetching messages:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Accept a conversation request
+router.post('/:id/accept', async (req, res) => {
+  const currentUser = getRequestUser(req);
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+
+    if (conversation.status !== 'pending') {
+      return res.status(400).json({ message: 'Conversation is not in pending state' });
+    }
+
+    if (conversation.initiatorId === currentUser.id) {
+      return res.status(403).json({ message: 'Initiator cannot accept their own request' });
+    }
+
+    conversation.status = 'accepted';
+    await conversation.save();
+
+    // Notify the initiator via Socket.IO if they are online
+    const io = req.app.get('io');
+    if (io) {
+      const sockets = getSockets(conversation.initiatorId);
+      if (sockets) {
+        for (const sid of sockets) {
+          io.to(sid).emit('conversation:accepted', { conversationId: conversation._id });
+        }
+      }
+    }
+
+    res.json({ success: true, conversation });
+  } catch (err) {
+    console.error('Accept error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Reject/Block a conversation request
+router.post('/:id/reject', async (req, res) => {
+  const currentUser = getRequestUser(req);
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+
+    if (conversation.status !== 'pending') {
+      return res.status(400).json({ message: 'Conversation is not in pending state' });
+    }
+
+    if (conversation.initiatorId === currentUser.id) {
+      return res.status(403).json({ message: 'Initiator cannot reject their own request' });
+    }
+
+    conversation.status = 'blocked';
+    conversation.blockedBy = currentUser.id;
+    await conversation.save();
+
+    res.json({ success: true, conversation });
+  } catch (err) {
+    console.error('Reject error:', err);
     res.status(500).send('Server Error');
   }
 });

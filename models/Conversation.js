@@ -18,7 +18,20 @@ const conversationSchema = new mongoose.Schema({
     ref: 'Message',
     default: null
   },
-  lastMessageTime: { type: Date, default: null }
+  lastMessageTime: { type: Date, default: null },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted', 'blocked'],
+    default: 'pending'
+  },
+  initiatorId: {
+    type: Number,
+    default: null
+  },
+  blockedBy: {
+    type: Number,
+    default: null
+  }
 }, {
   timestamps: true
 });

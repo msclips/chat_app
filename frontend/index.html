@@ -88,6 +88,35 @@
                         </div>
                     </header>
 
+                    <!-- Accept / Reject request banner -->
+                    <div id="request-banner" class="request-banner hidden">
+                        <div class="request-content">
+                            <div class="request-icon">
+                                <i class="ph ph-shield-warning"></i>
+                            </div>
+                            <div class="request-text">
+                                <h3>New Message Request</h3>
+                                <p><strong id="request-sender-name">User</strong> wants to send you a message. Accept request to start conversing, or reject to block.</p>
+                            </div>
+                            <div class="request-actions">
+                                <button id="btn-accept" class="btn btn-accept">
+                                    <i class="ph ph-check-bold"></i> Accept
+                                </button>
+                                <button id="btn-reject" class="btn btn-reject">
+                                    <i class="ph ph-prohibit-bold"></i> Reject
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Initiator Waiting State Overlay -->
+                    <div id="waiting-banner" class="waiting-banner hidden">
+                        <div class="waiting-content">
+                            <i class="ph ph-hourglass pulse"></i>
+                            <span>Waiting for recipient to accept your message request...</span>
+                        </div>
+                    </div>
+
                     <div class="messages-container" id="messages-container">
                         <!-- Messages will be injected here -->
                     </div>

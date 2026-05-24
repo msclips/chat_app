@@ -21,6 +21,24 @@ const io = new Server(server, {
   }
 });
 
+// Share io instance with express app
+app.set('io', io);
+
+// Socket.IO authentication middleware
+io.use((socket, next) => {
+  const userId = socket.handshake.auth.userId;
+  const username = socket.handshake.auth.username;
+  if (!userId) {
+    return next(new Error('Authentication error: User ID is required'));
+  }
+  socket.user = { id: Number(userId), user_name: username };
+  next();
+});
+
+// Register Socket.IO handlers
+const chatHandler = require('./socket/chatHandler');
+chatHandler(io);
+
 // Middleware
 app.use(cors());
 app.use(express.json());

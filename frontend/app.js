@@ -162,6 +162,16 @@ function initSocket() {
         updateConversationPreview(lastMessage);
     });
 
+    socket.on('conversation:accepted', ({ conversationId }) => {
+        const conv = conversations.find(c => c._id === conversationId);
+        if (conv) {
+            conv.status = 'accepted';
+            if (activeConversationId === conversationId) {
+                selectConversation(conversationId, chatWithName.textContent);
+            }
+        }
+    });
+
     socket.on('connect_error', (err) => {
         console.error('Socket connection error:', err.message);
     });
@@ -369,8 +379,35 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
     
+    // Manage Accept / Reject banners
+    const requestBanner = document.getElementById('request-banner');
+    const waitingBanner = document.getElementById('waiting-banner');
+    
+    requestBanner.classList.add('hidden');
+    waitingBanner.classList.add('hidden');
+    
+    let isPendingRecipient = false;
+    
+    if (!isCommunity) {
+        const activeConv = conversations.find(c => c._id === id);
+        if (activeConv && activeConv.status === 'pending') {
+            if (activeConv.initiatorId !== currentUser.id) {
+                isPendingRecipient = true;
+                document.getElementById('request-sender-name').textContent = name;
+                requestBanner.classList.remove('hidden');
+            } else {
+                waitingBanner.classList.remove('hidden');
+            }
+        }
+    }
+    
     if (!canSend) {
         messageInput.placeholder = "You are not a member of this community";
+        messageInput.disabled = true;
+        document.getElementById('send-btn').disabled = true;
+        document.getElementById('send-btn').style.opacity = '0.5';
+    } else if (isPendingRecipient) {
+        messageInput.placeholder = "Accept message request to start chatting...";
         messageInput.disabled = true;
         document.getElementById('send-btn').disabled = true;
         document.getElementById('send-btn').style.opacity = '0.5';
@@ -508,6 +545,57 @@ function escapeHTML(str) {
     p.textContent = str;
     return p.innerHTML;
 }
+
+// --- Accept / Reject Request Actions ---
+
+document.getElementById('btn-accept').addEventListener('click', async () => {
+    if (!activeConversationId) return;
+    try {
+        const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/accept`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        const data = await response.json();
+        if (response.ok) {
+            // Update the status of the conversation locally
+            const conv = conversations.find(c => c._id === activeConversationId);
+            if (conv) conv.status = 'accepted';
+            
+            // Re-trigger selectConversation to refresh input state and fetch messages
+            selectConversation(activeConversationId, chatWithName.textContent);
+        } else {
+            alert(data.message || 'Failed to accept conversation request.');
+        }
+    } catch (err) {
+        console.error('Accept error:', err);
+    }
+});
+
+document.getElementById('btn-reject').addEventListener('click', async () => {
+    if (!activeConversationId) return;
+    if (!confirm('Are you sure you want to reject this request? The sender will be blocked and this chat will be hidden.')) return;
+    try {
+        const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/reject`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        const data = await response.json();
+        if (response.ok) {
+            // Remove the conversation locally
+            conversations = conversations.filter(c => c._id !== activeConversationId);
+            renderConversations();
+            
+            // Clear current chat view
+            activeConversationId = null;
+            activeChat.classList.add('hidden');
+            noChatSelected.classList.remove('hidden');
+        } else {
+            alert(data.message || 'Failed to reject conversation request.');
+        }
+    } catch (err) {
+        console.error('Reject error:', err);
+    }
+});
 
 // Trigger initial app startup
 initApp();

@@ -70,6 +70,18 @@ function chatHandler(io) {
             // Private or regular group
             const isParticipant = conversation.participants.some(p => p.userId === userId);
             if (!isParticipant) return;
+
+            // Enforce private message requests status validation
+            if (conversation.type === 'private') {
+                if (conversation.status === 'blocked') {
+                    console.warn(`User ${username} attempted to send a message to a blocked conversation: ${conversationId}`);
+                    return socket.emit('message:error', { error: 'You are blocked from sending messages to this user.' });
+                }
+                if (conversation.status === 'pending' && conversation.initiatorId !== userId) {
+                    console.warn(`User ${username} attempted to send a message to a pending conversation without accepting first: ${conversationId}`);
+                    return socket.emit('message:error', { error: 'You must accept the conversation request before replying.' });
+                }
+            }
         }
 
         // Save message to MongoDB
