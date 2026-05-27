@@ -16,6 +16,11 @@ const messageSchema = new mongoose.Schema({
   content: { type: String, default: '' },
   fileUrl: { type: String, default: null },
   fileName: { type: String, default: null },
+  replyTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message',
+    default: null
+  },
   readBy: [{
     userId: { type: Number, required: true },
     readAt: { type: Date, default: Date.now }

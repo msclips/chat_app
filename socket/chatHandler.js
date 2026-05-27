@@ -47,7 +47,7 @@ function chatHandler(io) {
           return;
         }
 
-        const { conversationId, content, messageType = 'text', tempId } = parsedData;
+        const { conversationId, content, messageType = 'text', tempId, replyTo } = parsedData;
 
         if (!conversationId || !content) return;
        
@@ -91,9 +91,14 @@ function chatHandler(io) {
           senderName: username,
           messageType,
           content,
+          replyTo: replyTo || null,
           readBy: [{ userId, readAt: new Date() }]
         });
         await message.save();
+
+        if (replyTo) {
+          await message.populate('replyTo', 'senderName content');
+        }
 
         // Update conversation last message
         await Conversation.updateOne(

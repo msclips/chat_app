@@ -798,6 +798,119 @@ body {
     color: var(--primary);
 }
 
+/* --- REPLY FUNCTIONALITY UI --- */
+
+.reply-indicator {
+    background: rgba(30, 41, 59, 0.9);
+    border-top: 1px solid var(--border);
+    padding: 10px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    animation: slideDown 0.2s ease-out;
+}
+
+.reply-indicator-content {
+    display: flex;
+    flex-direction: column;
+    border-left: 3px solid var(--primary);
+    padding-left: 10px;
+}
+
+.reply-to-name {
+    font-weight: 600;
+    color: var(--primary-light);
+    margin-bottom: 2px;
+}
+
+.reply-to-text {
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 500px;
+}
+
+#cancel-reply-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    transition: color 0.2s;
+}
+
+#cancel-reply-btn:hover {
+    color: white;
+}
+
+.replied-message-block {
+    background: rgba(0, 0, 0, 0.2);
+    border-left: 3px solid var(--primary-light);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.replied-message-block .replied-name {
+    font-weight: 600;
+    color: var(--primary-light);
+    margin-bottom: 2px;
+}
+
+.replied-message-block .replied-text {
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-actions {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    background: var(--glass-bg);
+    border-radius: 50%;
+    padding: 6px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(4px);
+    transition: all 0.2s;
+}
+
+.message.sent .message-actions {
+    left: -40px;
+}
+
+.message.received .message-actions {
+    right: -40px;
+}
+
+.message:hover .message-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-actions i {
+    color: var(--text-muted);
+    font-size: 16px;
+}
+
+.message-actions:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.message-actions:hover i {
+    color: white;
+}
+
 @keyframes slideDown {
     from { transform: translateY(-20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }

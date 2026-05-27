@@ -104,6 +104,7 @@ router.get('/:id/messages', async (req, res) => {
     }
 
     const messages = await Message.find({ conversationId: req.params.id })
+      .populate('replyTo', 'senderName content')
       .sort({ createdAt: 1 }) // Oldest first for chat history
       .limit(50);
     console.log(`Found ${messages.length} messages`);

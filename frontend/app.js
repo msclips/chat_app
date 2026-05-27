@@ -6,6 +6,7 @@ let activeCommunityId = null;
 let conversations = [];
 let communities = [];
 let allUsers = [];
+let replyingToMessage = null;
 
 // DOM Elements
 const loginView = document.getElementById('login-view');
@@ -24,6 +25,17 @@ const newChatModal = document.getElementById('new-chat-modal');
 const closeModalBtn = document.getElementById('close-modal');
 const usersListContainer = document.getElementById('users-list');
 const userSearchInput = document.getElementById('user-search-input');
+const replyIndicator = document.getElementById('reply-indicator');
+const replyToName = document.getElementById('reply-to-name');
+const replyToText = document.getElementById('reply-to-text');
+const cancelReplyBtn = document.getElementById('cancel-reply-btn');
+
+if (cancelReplyBtn) {
+    cancelReplyBtn.addEventListener('click', () => {
+        replyingToMessage = null;
+        replyIndicator.classList.add('hidden');
+    });
+}
 
 const chatsTab = document.getElementById('chats-tab');
 const communitiesTab = document.getElementById('communities-tab');
@@ -154,6 +166,7 @@ function initSocket() {
         if (tempMsg) {
             tempMsg.classList.remove('pending');
             tempMsg.removeAttribute('data-temp-id');
+            if (message._id) tempMsg.dataset.id = message._id;
         }
         updateConversationPreview(message);
     });
@@ -376,6 +389,10 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     noChatSelected.classList.add('hidden');
     activeChat.classList.remove('hidden');
     
+    // Clear reply state on chat switch
+    replyingToMessage = null;
+    if (replyIndicator) replyIndicator.classList.add('hidden');
+    
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
     
@@ -452,11 +469,40 @@ function appendMessage(message) {
     const isSent = message.senderId === currentUser.id;
     const div = document.createElement('div');
     div.className = `message ${isSent ? 'sent' : 'received'}`;
+    if (message._id) div.dataset.id = message._id;
     
+    const sName = message.senderName || (isSent ? currentUser.user_name : chatWithName.textContent);
+    
+    let replyHTML = '';
+    if (message.replyTo) {
+        replyHTML = `
+            <div class="replied-message-block">
+                <div class="replied-name">${escapeHTML(message.replyTo.senderName || 'User')}</div>
+                <div class="replied-text">${escapeHTML(message.replyTo.content || '')}</div>
+            </div>
+        `;
+    }
+
     div.innerHTML = `
+        ${replyHTML}
         <div class="message-content">${escapeHTML(message.content)}</div>
         <div class="message-time">${formatTime(message.createdAt)}</div>
+        <div class="message-actions">
+            <i class="ph ph-arrow-u-up-left"></i>
+        </div>
     `;
+    
+    const actionBtn = div.querySelector('.message-actions');
+    actionBtn.addEventListener('click', () => {
+        const msgId = message._id || div.dataset.id;
+        if (msgId) {
+            replyingToMessage = { _id: msgId, senderName: sName, content: message.content };
+            replyToName.textContent = `Replying to ${sName}`;
+            replyToText.textContent = message.content;
+            replyIndicator.classList.remove('hidden');
+            messageInput.focus();
+        }
+    });
     
     messagesContainer.appendChild(div);
 }
@@ -480,13 +526,19 @@ messageForm.addEventListener('submit', (e) => {
         conversationId: activeConversationId,
         content: content,
         messageType: 'text',
-        tempId: tempId
+        tempId: tempId,
+        replyTo: replyingToMessage ? replyingToMessage._id : null
     };
 
     appendMessage({
         senderId: currentUser.id,
         content: content,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        replyTo: replyingToMessage ? {
+            _id: replyingToMessage._id,
+            senderName: replyingToMessage.senderName,
+            content: replyingToMessage.content
+        } : null
     });
     
     messagesContainer.lastElementChild.setAttribute('data-temp-id', tempId);
@@ -494,6 +546,10 @@ messageForm.addEventListener('submit', (e) => {
 
     socket.emit('message:send', messageData);
     messageInput.value = '';
+    
+    replyingToMessage = null;
+    if (replyIndicator) replyIndicator.classList.add('hidden');
+    
     scrollToBottom();
 });
 
