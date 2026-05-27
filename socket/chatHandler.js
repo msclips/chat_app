@@ -144,6 +144,64 @@ function chatHandler(io) {
       }
     });
 
+    // Edit Message
+    socket.on('message:edit', async (data) => {
+      try {
+        let parsedData;
+        try {
+          parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        } catch (err) {
+          console.error('Invalid JSON:', data);
+          return;
+        }
+
+        const { messageId, content } = parsedData;
+        if (!messageId || !content) return;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        if (message.senderId !== userId) {
+            return socket.emit('message:error', { error: 'You can only edit your own messages.' });
+        }
+
+        message.content = content;
+        message.isEdited = true;
+        await message.save();
+
+        if (message.replyTo) {
+          await message.populate('replyTo', 'senderName content');
+        }
+
+        const messageData = message.toObject();
+
+        socket.emit('message:updated', messageData);
+        socket.to(`conv:${message.conversationId}`).emit('message:updated', messageData);
+        
+        // Notify participants who might be online but not in the room if this was the last message
+        const conversation = await Conversation.findById(message.conversationId);
+        if (conversation && conversation.type !== 'community' && conversation.lastMessage && conversation.lastMessage.toString() === messageId.toString()) {
+            for (const participant of conversation.participants) {
+              if (participant.userId !== userId) {
+                const sockets = getSockets(participant.userId);
+                if (sockets) {
+                  for (const sid of sockets) {
+                    io.to(sid).emit('conversation:updated', {
+                      conversationId: conversation._id,
+                      lastMessage: messageData,
+                      incrementUnread: false
+                    });
+                  }
+                }
+              }
+            }
+        }
+      } catch (err) {
+        console.error('Message edit error:', err);
+        socket.emit('message:error', { error: 'Failed to edit message' });
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${username}`);
       removeSocket(userId, socket.id);

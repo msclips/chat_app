@@ -7,6 +7,7 @@ let conversations = [];
 let communities = [];
 let allUsers = [];
 let replyingToMessage = null;
+let editingMessageId = null;
 
 // DOM Elements
 const loginView = document.getElementById('login-view');
@@ -30,11 +31,27 @@ const replyToName = document.getElementById('reply-to-name');
 const replyToText = document.getElementById('reply-to-text');
 const cancelReplyBtn = document.getElementById('cancel-reply-btn');
 
+const editIndicator = document.getElementById('edit-indicator');
+const editToText = document.getElementById('edit-to-text');
+const cancelEditBtn = document.getElementById('cancel-edit-btn');
+
+function cancelReply() {
+    replyingToMessage = null;
+    if (replyIndicator) replyIndicator.classList.add('hidden');
+}
+
+function cancelEdit() {
+    editingMessageId = null;
+    if (editIndicator) editIndicator.classList.add('hidden');
+    if (!replyingToMessage) messageInput.value = '';
+}
+
 if (cancelReplyBtn) {
-    cancelReplyBtn.addEventListener('click', () => {
-        replyingToMessage = null;
-        replyIndicator.classList.add('hidden');
-    });
+    cancelReplyBtn.addEventListener('click', cancelReply);
+}
+
+if (cancelEditBtn) {
+    cancelEditBtn.addEventListener('click', cancelEdit);
 }
 
 const chatsTab = document.getElementById('chats-tab');
@@ -169,6 +186,28 @@ function initSocket() {
             if (message._id) tempMsg.dataset.id = message._id;
         }
         updateConversationPreview(message);
+    });
+
+    socket.on('message:updated', (updatedMessage) => {
+        if (updatedMessage.conversationId === activeConversationId) {
+            const msgEl = document.querySelector(`.message[data-id="${updatedMessage._id}"]`);
+            if (msgEl) {
+                const contentEl = msgEl.querySelector('.message-content');
+                if (contentEl) contentEl.textContent = updatedMessage.content;
+                
+                let editedLabel = msgEl.querySelector('.edited-label');
+                if (!editedLabel && updatedMessage.isEdited) {
+                    const timeEl = msgEl.querySelector('.message-time');
+                    if (timeEl) {
+                        editedLabel = document.createElement('span');
+                        editedLabel.className = 'edited-label';
+                        editedLabel.textContent = ' (edited)';
+                        timeEl.appendChild(editedLabel);
+                    }
+                }
+            }
+        }
+        updateConversationPreview(updatedMessage);
     });
 
     socket.on('conversation:updated', ({ conversationId, lastMessage }) => {
@@ -389,9 +428,9 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     noChatSelected.classList.add('hidden');
     activeChat.classList.remove('hidden');
     
-    // Clear reply state on chat switch
-    replyingToMessage = null;
-    if (replyIndicator) replyIndicator.classList.add('hidden');
+    // Clear reply and edit state on chat switch
+    cancelReply();
+    cancelEdit();
     
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
@@ -482,27 +521,50 @@ function appendMessage(message) {
             </div>
         `;
     }
+    
+    let editedHTML = message.isEdited ? '<span class="edited-label"> (edited)</span>' : '';
 
     div.innerHTML = `
         ${replyHTML}
         <div class="message-content">${escapeHTML(message.content)}</div>
-        <div class="message-time">${formatTime(message.createdAt)}</div>
+        <div class="message-time">${formatTime(message.createdAt)}${editedHTML}</div>
         <div class="message-actions">
-            <i class="ph ph-arrow-u-up-left"></i>
+            <i class="ph ph-arrow-u-up-left reply-btn" title="Reply"></i>
+            ${isSent ? '<i class="ph ph-pencil-simple edit-btn" title="Edit"></i>' : ''}
         </div>
     `;
     
-    const actionBtn = div.querySelector('.message-actions');
-    actionBtn.addEventListener('click', () => {
-        const msgId = message._id || div.dataset.id;
-        if (msgId) {
-            replyingToMessage = { _id: msgId, senderName: sName, content: message.content };
-            replyToName.textContent = `Replying to ${sName}`;
-            replyToText.textContent = message.content;
-            replyIndicator.classList.remove('hidden');
-            messageInput.focus();
-        }
-    });
+    const replyBtn = div.querySelector('.reply-btn');
+    if (replyBtn) {
+        replyBtn.addEventListener('click', () => {
+            const msgId = message._id || div.dataset.id;
+            if (msgId) {
+                replyingToMessage = { _id: msgId, senderName: sName, content: message.content };
+                replyToName.textContent = `Replying to ${sName}`;
+                replyToText.textContent = message.content;
+                if (replyIndicator) replyIndicator.classList.remove('hidden');
+                cancelEdit();
+                messageInput.focus();
+            }
+        });
+    }
+
+    const editBtn = div.querySelector('.edit-btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', () => {
+            const msgId = message._id || div.dataset.id;
+            if (msgId) {
+                const currentContentEl = div.querySelector('.message-content');
+                const currentContent = currentContentEl ? currentContentEl.textContent : message.content;
+                editingMessageId = msgId;
+                editToText.textContent = currentContent;
+                if (editIndicator) editIndicator.classList.remove('hidden');
+                cancelReply();
+                messageInput.value = currentContent;
+                messageInput.focus();
+            }
+        });
+    }
     
     messagesContainer.appendChild(div);
 }
@@ -520,6 +582,13 @@ messageForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const content = messageInput.value.trim();
     if (!content || !activeConversationId) return;
+
+    if (editingMessageId) {
+        socket.emit('message:edit', { messageId: editingMessageId, content });
+        messageInput.value = '';
+        cancelEdit();
+        return;
+    }
 
     const tempId = Date.now().toString();
     const messageData = {
@@ -547,8 +616,7 @@ messageForm.addEventListener('submit', (e) => {
     socket.emit('message:send', messageData);
     messageInput.value = '';
     
-    replyingToMessage = null;
-    if (replyIndicator) replyIndicator.classList.add('hidden');
+    cancelReply();
     
     scrollToBottom();
 });
