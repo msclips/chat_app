@@ -2,6 +2,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const GroupUser = require('../models/GroupUser');
 const { addSocket, removeSocket, getSockets } = require('./socketManager');
+const { sendChatNotification } = require('../services/chatNotificationService');
 
 function chatHandler(io) {
   io.on('connection', (socket) => {
@@ -122,8 +123,11 @@ function chatHandler(io) {
 
         // Notify participants who might be online but not in the room (only for private/group)
         if (conversation.type !== 'community') {
+            const recipientUserIds = [];
+
             for (const participant of conversation.participants) {
               if (participant.userId !== userId) {
+                recipientUserIds.push(participant.userId);
                 const sockets = getSockets(participant.userId);
                 if (sockets) {
                   for (const sid of sockets) {
@@ -134,6 +138,38 @@ function chatHandler(io) {
                     });
                   }
                 }
+              }
+            }
+
+            // Send Firebase Push Notification
+            if (recipientUserIds.length > 0) {
+              try {
+                // NOTE: Fetch user tokens based on your actual database schema/service.
+                // Assuming you have a UserToken model/service, e.g.:
+                // const userTokens = await UserTokenService.findAll({ where: { user_id: recipientUserIds }});
+                // Or if it's stored in User model:
+                // const users = await User.findAll({ where: { user_id: recipientUserIds }});
+                
+                // MOCK FETCH for demonstration:
+                // Mapping recipientUserIds to the format expected by the notification service
+                const userTokensToNotify = recipientUserIds.map(id => ({
+                   user_id: id,
+                   // android_token: 'FETCHED_ANDROID_TOKEN_FOR_' + id,
+                   // web_token: 'FETCHED_WEB_TOKEN_FOR_' + id,
+                }));
+
+                // Only send if we found users with tokens (you'd filter this based on actual DB response)
+                await sendChatNotification({
+                  userIds: userTokensToNotify,
+                  senderName: username,
+                  chatData: {
+                    chat_id: conversationId,
+                    message_id: message._id.toString(),
+                    sender_id: userId,
+                  }
+                });
+              } catch (notifyErr) {
+                console.error('Failed to trigger push notification:', notifyErr);
               }
             }
         }
