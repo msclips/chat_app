@@ -238,6 +238,78 @@ function chatHandler(io) {
       }
     });
 
+    // Delete Message
+    socket.on('message:delete', async (data) => {
+      try {
+        let parsedData;
+        try {
+          parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        } catch (err) {
+          console.error('Invalid JSON:', data);
+          return;
+        }
+
+        const { messageId, deleteType } = parsedData; // deleteType: 1 for Me, 2 for Everyone
+        if (!messageId || !deleteType) return;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        const conversation = await Conversation.findById(message.conversationId);
+        if (!conversation) return;
+
+        if (deleteType === 2) {
+            if (message.senderId !== userId) {
+                return socket.emit('message:error', { error: 'You can only delete your own messages for everyone.' });
+            }
+            message.delete_type = 2;
+            message.isDeleted = true;
+        } else if (deleteType === 1) {
+            if (!message.deleted_by.includes(userId)) {
+                message.deleted_by.push(userId);
+            }
+            if (message.delete_type !== 2) {
+                message.delete_type = 1;
+            }
+        } else {
+            return;
+        }
+
+        await message.save();
+
+        if (deleteType === 2) {
+            socket.emit('message:deleted', { messageId, deleteType });
+            socket.to(`conv:${message.conversationId}`).emit('message:deleted', { messageId, deleteType });
+            
+            if (conversation.type !== 'community') {
+                for (const participant of conversation.participants) {
+                    if (participant.userId !== userId) {
+                        const sockets = getSockets(participant.userId);
+                        if (sockets) {
+                            for (const sid of sockets) {
+                                io.to(sid).emit('message:deleted', { messageId, deleteType, conversationId: conversation._id });
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (deleteType === 1) {
+            socket.emit('message:deleted', { messageId, deleteType });
+            const sockets = getSockets(userId);
+            if (sockets) {
+                for (const sid of sockets) {
+                    if (sid !== socket.id) {
+                        io.to(sid).emit('message:deleted', { messageId, deleteType, conversationId: conversation._id });
+                    }
+                }
+            }
+        }
+      } catch (err) {
+        console.error('Message delete error:', err);
+        socket.emit('message:error', { error: 'Failed to delete message' });
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${username}`);
       removeSocket(userId, socket.id);

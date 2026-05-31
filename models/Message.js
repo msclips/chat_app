@@ -26,7 +26,9 @@ const messageSchema = new mongoose.Schema({
     readAt: { type: Date, default: Date.now }
   }],
   isEdited: { type: Boolean, default: false },
-  isDeleted: { type: Boolean, default: false }
+  isDeleted: { type: Boolean, default: false },
+  delete_type: { type: Number, enum: [1, 2, null], default: null },
+  deleted_by: [{ type: Number }]
 }, {
   timestamps: true
 });

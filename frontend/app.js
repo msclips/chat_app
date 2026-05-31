@@ -210,6 +210,13 @@ function initSocket() {
         updateConversationPreview(updatedMessage);
     });
 
+    socket.on('message:deleted', ({ messageId, deleteType, conversationId }) => {
+        const msgEl = document.querySelector(`.message[data-id="${messageId}"]`);
+        if (msgEl) {
+            msgEl.remove();
+        }
+    });
+
     socket.on('conversation:updated', ({ conversationId, lastMessage }) => {
         updateConversationPreview(lastMessage);
     });
@@ -531,6 +538,7 @@ function appendMessage(message) {
         <div class="message-actions">
             <i class="ph ph-arrow-u-up-left reply-btn" title="Reply"></i>
             ${isSent ? '<i class="ph ph-pencil-simple edit-btn" title="Edit"></i>' : ''}
+            <i class="ph ph-trash delete-btn" title="Delete"></i>
         </div>
     `;
     
@@ -563,6 +571,34 @@ function appendMessage(message) {
                 messageInput.value = currentContent;
                 messageInput.focus();
             }
+        });
+    }
+
+    const deleteBtn = div.querySelector('.delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            const msgId = message._id || div.dataset.id;
+            if (!msgId) return;
+
+            let deleteType = 1;
+            if (isSent) {
+                if (confirm("Delete this message for everyone? (OK = Everyone, Cancel = Only Me)")) {
+                    deleteType = 2;
+                } else {
+                    if (!confirm("Delete for me only?")) {
+                        return;
+                    }
+                }
+            } else {
+                if (!confirm("Are you sure you want to delete this message for yourself?")) {
+                    return;
+                }
+            }
+
+            socket.emit('message:delete', { messageId: msgId, deleteType });
+            
+            // Optimistically remove from UI
+            div.remove();
         });
     }
     
