@@ -27,6 +27,20 @@ function chatHandler(io) {
             if (conversation.type === 'community') {
                 socket.join(`conv:${convId}`);
                 console.log(`User ${username} joined community room conv:${convId}`);
+            } else if (conversation.type === 'group') {
+                const membership = await GroupUser.findOne({
+                    where: {
+                        group_id: conversation.groupId,
+                        user_id: userId,
+                        status: 1,
+                        is_active: 1
+                    }
+                });
+
+                if (membership) {
+                    socket.join(`conv:${convId}`);
+                    console.log(`User ${username} joined group room conv:${convId}`);
+                }
             } else if (conversation.participants.some(p => p.userId === userId)) {
                 socket.join(`conv:${convId}`);
                 console.log(`User ${username} joined room conv:${convId}`);
@@ -58,7 +72,6 @@ function chatHandler(io) {
         if (!conversation) return;
 
         if (conversation.type === 'community') {
-            // Check if user is in group_user table
             const membership = await GroupUser.findOne({
                 where: { group_id: conversation.communityId, user_id: userId }
             });
@@ -67,12 +80,24 @@ function chatHandler(io) {
                 console.warn(`User ${username} attempted to send message to community ${conversation.communityId} without permission.`);
                 return socket.emit('message:error', { error: 'You are not a member of this community.' });
             }
+        } else if (conversation.type === 'group') {
+            const membership = await GroupUser.findOne({
+                where: {
+                    group_id: conversation.groupId,
+                    user_id: userId,
+                    status: 1,
+                    is_active: 1
+                }
+            });
+
+            if (!membership) {
+                console.warn(`User ${username} attempted to send message to group ${conversation.groupId} without permission.`);
+                return socket.emit('message:error', { error: 'You are not a member of this group.' });
+            }
         } else {
-            // Private or regular group
             const isParticipant = conversation.participants.some(p => p.userId === userId);
             if (!isParticipant) return;
 
-            // Enforce private message requests status validation
             if (conversation.type === 'private') {
                 if (conversation.status === 'blocked') {
                     console.warn(`User ${username} attempted to send a message to a blocked conversation: ${conversationId}`);
@@ -123,20 +148,36 @@ function chatHandler(io) {
 
         // Notify participants who might be online but not in the room (only for private/group)
         if (conversation.type !== 'community') {
-            const recipientUserIds = [];
+            let recipientUserIds = [];
 
-            for (const participant of conversation.participants) {
-              if (participant.userId !== userId) {
-                recipientUserIds.push(participant.userId);
-                const sockets = getSockets(participant.userId);
-                if (sockets) {
-                  for (const sid of sockets) {
-                    io.to(sid).emit('conversation:updated', {
-                      conversationId,
-                      lastMessage: messageData,
-                      incrementUnread: true
-                    });
-                  }
+            if (conversation.type === 'group') {
+                const members = await GroupUser.findAll({
+                    where: {
+                        group_id: conversation.groupId,
+                        status: 1,
+                        is_active: 1
+                    }
+                });
+                recipientUserIds = members
+                    .map((member) => member.user_id)
+                    .filter((id) => id !== userId);
+            } else {
+                for (const participant of conversation.participants) {
+                    if (participant.userId !== userId) {
+                        recipientUserIds.push(participant.userId);
+                    }
+                }
+            }
+
+            for (const recipientId of recipientUserIds) {
+              const sockets = getSockets(recipientId);
+              if (sockets) {
+                for (const sid of sockets) {
+                  io.to(sid).emit('conversation:updated', {
+                    conversationId,
+                    lastMessage: messageData,
+                    incrementUnread: true
+                  });
                 }
               }
             }

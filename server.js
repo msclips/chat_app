@@ -10,6 +10,7 @@ const { sequelize, connectMongoDB } = require('./config/db');
 const userRoutes = require('./routes/users');
 const conversationRoutes = require('./routes/conversation');
 const communityRoutes = require('./routes/community');
+const groupRoutes = require('./routes/group');
 const socketRoutes = require('./routes/socket');
 
 const app = express();
@@ -48,6 +49,7 @@ app.use(express.static('frontend'));
 app.use('/api/users', userRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/communities', communityRoutes);
+app.use('/api/groups', groupRoutes);
 app.use('/api/socket', socketRoutes);
 
 

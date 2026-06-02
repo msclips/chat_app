@@ -3,6 +3,7 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const Message = require('../models/Message');
+const GroupUser = require('../models/GroupUser');
 
 /**
  * Helper to extract user identity directly from request headers, body, or query parameters.
@@ -73,10 +74,36 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
   const currentUser = getRequestUser(req);
   try {
-    const conversations = await Conversation.find({
-      'participants.userId': currentUser.id,
-      status: { $ne: 'blocked' }
-    }).sort({ updatedAt: -1 });
+    const memberships = await GroupUser.findAll({
+      where: {
+        user_id: currentUser.id,
+        status: 1,
+        is_active: 1
+      }
+    });
+
+    const groupIds = memberships.map((m) => m.group_id);
+    const filters = [
+      {
+        'participants.userId': currentUser.id,
+        status: { $ne: 'blocked' }
+      }
+    ];
+
+    if (groupIds.length > 0) {
+      filters.push({
+        type: 'group',
+        groupId: { $in: groupIds },
+        status: { $ne: 'blocked' }
+      });
+      filters.push({
+        type: 'community',
+        communityId: { $in: groupIds },
+        status: { $ne: 'blocked' }
+      });
+    }
+
+    const conversations = await Conversation.find({ $or: filters }).sort({ updatedAt: -1 });
 
     res.json(conversations);
   } catch (err) {
