@@ -1,5 +1,36 @@
 const admin = require('firebase-admin');
-// Ensure firebase-admin is initialized in your main server file (e.g., server.js)
+const fs = require('fs');
+const path = require('path');
+
+const isProduction = process.env.NODE_ENV === 'production';
+if(isProduction) {
+    console.log("Firebase initialized in PRODUCTION mode");
+} else {
+    console.log("Firebase initialized in DEVELOPMENT mode");
+}
+
+const filePath = {
+    dev : '../middleware/external_documents/firebase/karmas.firebase.json',
+    prod : '../middleware/external_documents/firebase/karmas.live.firebase.json'
+};
+
+const serviceAccountPath = isProduction? 
+    path.resolve(__dirname, filePath.prod) :
+    path.resolve(__dirname, filePath.dev);
+
+try {
+    const serviceAccountRaw = fs.readFileSync(serviceAccountPath, 'utf-8');
+    const serviceAccount = JSON.parse(serviceAccountRaw);
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log("✅ Firebase Admin SDK is initialized and ready.");
+    }
+} catch (err) {
+    console.log("⚠️  Could not load Firebase service account key from", serviceAccountPath);
+}
+
 // Assuming UserTokenService and NotificationHistoryDAL are imported here or available globally based on your architecture.
 // If they are in a different path, please adjust the require paths.
 // const UserTokenService = require('./UserTokenService');

@@ -185,19 +185,28 @@ function chatHandler(io) {
             // Send Firebase Push Notification
             if (recipientUserIds.length > 0) {
               try {
-                // NOTE: Fetch user tokens based on your actual database schema/service.
-                // Assuming you have a UserToken model/service, e.g.:
-                // const userTokens = await UserTokenService.findAll({ where: { user_id: recipientUserIds }});
-                // Or if it's stored in User model:
-                // const users = await User.findAll({ where: { user_id: recipientUserIds }});
-                
-                // MOCK FETCH for demonstration:
-                // Mapping recipientUserIds to the format expected by the notification service
-                const userTokensToNotify = recipientUserIds.map(id => ({
-                   user_id: id,
-                   // android_token: 'FETCHED_ANDROID_TOKEN_FOR_' + id,
-                   // web_token: 'FETCHED_WEB_TOKEN_FOR_' + id,
-                }));
+                // Fetch actual tokens from Firestore for the recipients
+                const admin = require('firebase-admin');
+                const db = admin.firestore();
+
+                const userTokensToNotify = [];
+
+                for (const id of recipientUserIds) {
+                    try {
+                        const tokenDoc = await db.collection('user_tokens').doc(id.toString()).get();
+                        
+                        if (tokenDoc.exists) {
+                            const tokenData = tokenDoc.data();
+                            userTokensToNotify.push({
+                                user_id: id,
+                                android_token: tokenData.fcmToken, // The Flutter app stores it as 'fcmToken'
+                                web_token: tokenData.fcmToken      // Optionally fallback for web
+                            });
+                        }
+                    } catch (dbErr) {
+                        console.error(`Error fetching token from Firestore for user ${id}:`, dbErr);
+                    }
+                }
 
                 // Only send if we found users with tokens (you'd filter this based on actual DB response)
                 await sendChatNotification({
