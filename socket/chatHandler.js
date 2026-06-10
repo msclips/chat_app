@@ -1,9 +1,9 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const GroupUser = require('../models/GroupUser');
+const UserToken = require('../models/UserToken');
 const { addSocket, removeSocket, getSockets } = require('./socketManager');
 const { sendChatNotification } = require('../services/chatNotificationService');
-
 function chatHandler(io) {
   io.on('connection', (socket) => {
     const userId = socket.user.id;
@@ -186,36 +186,36 @@ function chatHandler(io) {
             if (recipientUserIds.length > 0) {
               try {
                 console.log(`[NOTIFICATION] Starting push notification process for ${recipientUserIds.length} recipients`);
-                // Fetch actual tokens from Firestore for the recipients
-                const admin = require('firebase-admin');
-                const db = admin.firestore();
-
+                // Fetch actual tokens from MySQL for the recipients
                 const userTokensToNotify = [];
-
-                console.log(`[NOTIFICATION] Fetching tokens from Firestore Database Start`);
+                console.log(`[NOTIFICATION] Fetching tokens from MySQL Database Start`);
                 for (const id of recipientUserIds) {
                     try {
                         console.log(`[NOTIFICATION] Database Query Start: Fetching token for user ${id}`);
-                        const tokenDoc = await db.collection('user_tokens').doc(id.toString()).get();
+                        const tokenData = await UserToken.findOne({
+                            where: {
+                                user_id: id,
+                                is_active: true
+                            }
+                        });
                         console.log(`[NOTIFICATION] Database Query Completed: Fetching token for user ${id}`);
                         
-                        if (tokenDoc.exists) {
-                            const tokenData = tokenDoc.data();
+                        if (tokenData) {
                             userTokensToNotify.push({
                                 user_id: id,
-                                android_token: tokenData.fcmToken, // The Flutter app stores it as 'fcmToken'
-                                web_token: tokenData.fcmToken      // Optionally fallback for web
+                                android_token: tokenData.android_token,
+                                web_token: tokenData.web_token
                             });
                             console.log(`[NOTIFICATION] Token found for user ${id}`);
                         } else {
                             console.log(`[NOTIFICATION] No token document found for user ${id}`);
                         }
                     } catch (dbErr) {
-                        console.error(`[NOTIFICATION] Error fetching token from Firestore for user ${id}:`, dbErr);
+                        console.error(`[NOTIFICATION] Error fetching token from MySQL for user ${id}:`, dbErr);
                         console.error(`[NOTIFICATION] Complete Error Stack Trace:`, dbErr.stack);
                     }
                 }
-                console.log(`[NOTIFICATION] Fetching tokens from Firestore Database Completed. Found tokens for ${userTokensToNotify.length} users`);
+                console.log(`[NOTIFICATION] Fetching tokens from MySQL Database Completed. Found tokens for ${userTokensToNotify.length} users`);
 
                 // Only send if we found users with tokens (you'd filter this based on actual DB response)
                 console.log(`[NOTIFICATION] API Call Start: sendChatNotification`);
