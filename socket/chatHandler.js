@@ -181,7 +181,7 @@ function chatHandler(io) {
                 }
               }
             }
-
+                console.log(`test123`);
             // Send Firebase Push Notification
             if (recipientUserIds.length > 0) {
               try {
