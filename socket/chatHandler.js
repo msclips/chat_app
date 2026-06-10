@@ -185,15 +185,19 @@ function chatHandler(io) {
             // Send Firebase Push Notification
             if (recipientUserIds.length > 0) {
               try {
+                console.log(`[NOTIFICATION] Starting push notification process for ${recipientUserIds.length} recipients`);
                 // Fetch actual tokens from Firestore for the recipients
                 const admin = require('firebase-admin');
                 const db = admin.firestore();
 
                 const userTokensToNotify = [];
 
+                console.log(`[NOTIFICATION] Fetching tokens from Firestore Database Start`);
                 for (const id of recipientUserIds) {
                     try {
+                        console.log(`[NOTIFICATION] Database Query Start: Fetching token for user ${id}`);
                         const tokenDoc = await db.collection('user_tokens').doc(id.toString()).get();
+                        console.log(`[NOTIFICATION] Database Query Completed: Fetching token for user ${id}`);
                         
                         if (tokenDoc.exists) {
                             const tokenData = tokenDoc.data();
@@ -202,13 +206,19 @@ function chatHandler(io) {
                                 android_token: tokenData.fcmToken, // The Flutter app stores it as 'fcmToken'
                                 web_token: tokenData.fcmToken      // Optionally fallback for web
                             });
+                            console.log(`[NOTIFICATION] Token found for user ${id}`);
+                        } else {
+                            console.log(`[NOTIFICATION] No token document found for user ${id}`);
                         }
                     } catch (dbErr) {
-                        console.error(`Error fetching token from Firestore for user ${id}:`, dbErr);
+                        console.error(`[NOTIFICATION] Error fetching token from Firestore for user ${id}:`, dbErr);
+                        console.error(`[NOTIFICATION] Complete Error Stack Trace:`, dbErr.stack);
                     }
                 }
+                console.log(`[NOTIFICATION] Fetching tokens from Firestore Database Completed. Found tokens for ${userTokensToNotify.length} users`);
 
                 // Only send if we found users with tokens (you'd filter this based on actual DB response)
+                console.log(`[NOTIFICATION] API Call Start: sendChatNotification`);
                 await sendChatNotification({
                   userIds: userTokensToNotify,
                   senderName: username,
@@ -218,8 +228,10 @@ function chatHandler(io) {
                     sender_id: userId,
                   }
                 });
+                console.log(`[NOTIFICATION] API Call Completed: sendChatNotification`);
               } catch (notifyErr) {
-                console.error('Failed to trigger push notification:', notifyErr);
+                console.error('[NOTIFICATION] Failed to trigger push notification:', notifyErr);
+                console.error('[NOTIFICATION] Complete Error Stack Trace:', notifyErr.stack);
               }
             }
         }
