@@ -54,14 +54,14 @@ function chatHandler(io) {
       try {
 
         let parsedData;
-
+        console.log(`[MESSAGE] Message Data:`, data);
         try {
           parsedData = typeof data === 'string' ? JSON.parse(data) : data;
         } catch (err) {
           console.error('Invalid JSON:', data);
           return;
         }
-
+        console.log(`[MESSAGE] Parsed Data:`, parsedData);
         const { conversationId, content, messageType = 'text', tempId, replyTo } = parsedData;
 
         if (!conversationId || !content) return;
@@ -70,7 +70,7 @@ function chatHandler(io) {
         const conversation = await Conversation.findById(conversationId);
 
         if (!conversation) return;
-
+        console.log(`[MESSAGE] Conversation:`, conversation);
         if (conversation.type === 'community') {
             const membership = await GroupUser.findOne({
                 where: { group_id: conversation.communityId, user_id: userId }
@@ -109,6 +109,7 @@ function chatHandler(io) {
                 }
             }
         }
+        console.log(`[MESSAGE] Conversation is valid`);
 
         // Save message to MongoDB
         const message = new Message({
@@ -125,6 +126,7 @@ function chatHandler(io) {
         if (replyTo) {
           await message.populate('replyTo', 'senderName content');
         }
+        console.log(`[MESSAGE] Message saved to MongoDB`);
 
         // Update conversation last message
         await Conversation.updateOne(
@@ -136,18 +138,23 @@ function chatHandler(io) {
             }
           }
         );
+        console.log(`[MESSAGE] Conversation updated`);
 
         const messageData = message.toObject();
         messageData.tempId = tempId;
+        console.log(`[MESSAGE] Message data:`, messageData);
 
         // Emit to sender
         socket.emit('message:delivered', { tempId, message: messageData });
+        console.log(`[MESSAGE] Message delivered to sender`);
 
         // Broadcast to other participants in the room
         socket.to(`conv:${conversationId}`).emit('message:new', messageData);
+        console.log(`[MESSAGE] Message broadcasted to room`);
 
         // Notify participants who might be online but not in the room (only for private/group)
         if (conversation.type !== 'community') {
+            console.log(`[MESSAGE] Notifying participants who might be online but not in the room`)
             let recipientUserIds = [];
 
             if (conversation.type === 'group') {
@@ -168,6 +175,7 @@ function chatHandler(io) {
                     }
                 }
             }
+            console.log(`[MESSAGE] Recipient user ids:`, recipientUserIds);
 
             for (const recipientId of recipientUserIds) {
               const sockets = getSockets(recipientId);
