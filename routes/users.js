@@ -33,11 +33,7 @@ router.post('/login', async (req, res) => {
     let user = await User.findOne({ where: { user_name }, raw: true });
 
     if (!user) {
-      user = await User.create({
-        user_name,
-        password: 'nopassword' // dummy password to satisfy database constraint
-      });
-      user = user.get({ plain: true });
+      return res.status(404).json({ message: 'User not found' });
     }
 
     res.json({
