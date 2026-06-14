@@ -234,6 +234,8 @@ function chatHandler(io) {
                     chat_id: conversationId,
                     message_id: message._id.toString(),
                     sender_id: userId,
+                    message_content: message.content,
+                    message_type: message.messageType
                   }
                 });
                 console.log(`[NOTIFICATION] API Call Completed: sendChatNotification`);

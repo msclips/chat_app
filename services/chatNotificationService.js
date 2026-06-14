@@ -3,18 +3,18 @@ const fs = require('fs');
 const path = require('path');
 
 const isProduction = process.env.NODE_ENV === 'production';
-if(isProduction) {
+if (isProduction) {
     console.log("Firebase initialized in PRODUCTION mode");
 } else {
     console.log("Firebase initialized in DEVELOPMENT mode");
 }
 
 const filePath = {
-    dev : '../middleware/external_documents/firebase/karmas.firebase.json',
-    prod : '../middleware/external_documents/firebase/karmas.live.firebase.json'
+    dev: '../middleware/external_documents/firebase/karmas.firebase.json',
+    prod: '../middleware/external_documents/firebase/karmas.live.firebase.json'
 };
 
-const serviceAccountPath = isProduction? 
+const serviceAccountPath = isProduction ?
     path.resolve(__dirname, filePath.prod) :
     path.resolve(__dirname, filePath.dev);
 
@@ -80,8 +80,19 @@ const sendChatNotification = async ({
         console.log("[NOTIFICATION] Firebase Initialization Status: Initialized");
 
         const messaging = admin.messaging();
-        const title = "New Message";
-        const description = `${senderName} sent you a message`;
+        const title = senderName || "New Message";
+        let description = `${senderName || 'Someone'} sent you a message`;
+
+        if (chatData) {
+            const msgContent = chatData.message_content || chatData.content || chatData.message;
+            const msgType = chatData.message_type || chatData.messageType || 'text';
+
+            if (msgType !== 'text') {
+                description = `Sent an attachment`;
+            } else if (msgContent && msgContent.trim() !== '') {
+                description = msgContent;
+            }
+        }
 
         console.log(`[NOTIFICATION] Total Users Count: ${userIds ? userIds.length : 0}`);
 
@@ -144,12 +155,12 @@ const sendChatNotification = async ({
             const batchNo = Math.floor(i / batchSize) + 1;
             console.log(`[NOTIFICATION] Batch Number: ${batchNo}`);
             console.log(`[NOTIFICATION] Batch Message Count: ${batchMessages.length}`);
-            
+
             try {
                 console.log(`[NOTIFICATION] Firebase Send Request Start (Batch ${batchNo})`);
                 const response = await messaging.sendEach(batchMessages);
                 console.log(`[NOTIFICATION] Firebase Send Response (Batch ${batchNo}):`, JSON.stringify(response, null, 2));
-                
+
                 totalSuccessCount += response.successCount;
                 totalFailureCount += response.failureCount;
 
