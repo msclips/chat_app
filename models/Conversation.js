@@ -4,7 +4,8 @@ const conversationSchema = new mongoose.Schema({
   participants: [{
     userId: { type: Number, required: true },
     username: { type: String, required: true },
-    lastRead: { type: Date, default: Date.now }
+    lastRead: { type: Date, default: Date.now },
+    muteUntil: { type: Date, default: null }
   }],
   type: {
     type: String,

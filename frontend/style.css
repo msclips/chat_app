@@ -925,6 +925,201 @@ body {
 @keyframes pulse {
     0%, 100% { transform: scale(1); opacity: 0.6; }
     50% { transform: scale(1.15); opacity: 1; }
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.request-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+}
+
+.btn-accept {
+    background: #10b981;
+    color: white;
+}
+
+.btn-accept:hover {
+    background: #059669;
+    transform: translateY(-1px);
+}
+
+.btn-reject {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-reject:hover {
+    background: #ef4444;
+    color: white;
+    transform: translateY(-1px);
+}
+
+/* Waiting banner for initiator */
+.waiting-banner {
+    background: rgba(30, 41, 59, 0.6);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 12px 24px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    z-index: 10;
+}
+
+.waiting-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.pulse {
+    animation: pulse 1.8s infinite ease-in-out;
+    color: var(--primary);
+}
+
+/* --- REPLY FUNCTIONALITY UI --- */
+
+.reply-indicator {
+    background: rgba(30, 41, 59, 0.9);
+    border-top: 1px solid var(--border);
+    padding: 10px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    animation: slideDown 0.2s ease-out;
+}
+
+.reply-indicator-content {
+    display: flex;
+    flex-direction: column;
+    border-left: 3px solid var(--primary);
+    padding-left: 10px;
+}
+
+.reply-to-name {
+    font-weight: 600;
+    color: var(--primary-light);
+    margin-bottom: 2px;
+}
+
+.reply-to-text {
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 500px;
+}
+
+#cancel-reply-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    transition: color 0.2s;
+}
+
+#cancel-reply-btn:hover {
+    color: white;
+}
+
+.replied-message-block {
+    background: rgba(0, 0, 0, 0.2);
+    border-left: 3px solid var(--primary-light);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.replied-message-block .replied-name {
+    font-weight: 600;
+    color: var(--primary-light);
+    margin-bottom: 2px;
+}
+
+.replied-message-block .replied-text {
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-actions {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    background: var(--glass-bg);
+    border-radius: 20px;
+    padding: 6px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(4px);
+    transition: all 0.2s;
+    gap: 4px;
+}
+
+.message.sent .message-actions {
+    left: -40px;
+}
+
+.message.received .message-actions {
+    right: -40px;
+}
+
+.message:hover .message-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-actions i {
+    color: var(--text-muted);
+    font-size: 16px;
+    padding: 4px;
+    border-radius: 50%;
+    transition: background 0.2s, color 0.2s;
+}
+
+.message-actions i:hover {
+    background: var(--primary);
+    color: white;
+}
+
+.edited-label {
+    font-size: 10px;
+    font-style: italic;
+    opacity: 0.75;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.15); opacity: 1; }
 }
 
 /* --- POLL UI --- */
@@ -1040,3 +1235,49 @@ body {
     padding: 4px;
 }
 
+/* --- MUTE UI --- */
+.mute-indicator {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-left: 6px;
+    opacity: 0.7;
+}
+
+.mute-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mute-option-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--glass-bg);
+    color: var(--text-main);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    text-align: left;
+}
+
+.mute-option-btn:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
+.mute-option-btn i {
+    font-size: 20px;
+    color: var(--primary);
+}
+
+#mute-toggle-btn.muted {
+    color: var(--text-muted);
+    opacity: 0.5;
+}

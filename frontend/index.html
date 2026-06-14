@@ -82,6 +82,7 @@
                             </div>
                         </div>
                         <div class="chat-actions">
+                            <button id="mute-toggle-btn" title="Mute"><i class="ph ph-bell"></i></button>
                             <button><i class="ph ph-phone"></i></button>
                             <button><i class="ph ph-video-camera"></i></button>
                             <button><i class="ph ph-dots-three-vertical"></i></button>
@@ -149,6 +150,35 @@
                     </footer>
                 </div>
             </main>
+        </div>
+
+        <!-- Mute Duration Modal -->
+        <div id="mute-modal" class="modal hidden">
+            <div class="modal-content" style="max-width: 340px;">
+                <header class="modal-header">
+                    <h3>Mute Notifications</h3>
+                    <button id="close-mute-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body" style="padding: 16px 24px;">
+                    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+                        You will still receive messages, but notifications will be silenced.
+                    </p>
+                    <div class="mute-options">
+                        <button class="mute-option-btn" data-duration="1day">
+                            <i class="ph ph-clock"></i>
+                            <span>Mute for 1 Day</span>
+                        </button>
+                        <button class="mute-option-btn" data-duration="1week">
+                            <i class="ph ph-calendar"></i>
+                            <span>Mute for 1 Week</span>
+                        </button>
+                        <button class="mute-option-btn" data-duration="always">
+                            <i class="ph ph-bell-slash"></i>
+                            <span>Mute Always</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Poll Creation Modal -->

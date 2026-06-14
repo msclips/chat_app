@@ -73,7 +73,7 @@ function chatHandler(io) {
         if (!conversation) return;
         console.log(`[MESSAGE] Conversation:`, conversation);
         if (conversation.type === 'community') {
-            const membership = await GroupUser.findOne({
+            const membership = await GroupUser  .findOne({
                 where: { group_id: conversation.communityId, user_id: userId }
             });
 
@@ -177,7 +177,22 @@ function chatHandler(io) {
                     }
                 }
             }
-            console.log(`[MESSAGE] Recipient user ids:`, recipientUserIds);
+            console.log(`[MESSAGE] Recipient user ids before mute filter:`, recipientUserIds);
+
+            // Filter out muted users from notification recipients
+            const now = new Date();
+            const mutedUserIds = new Set();
+            
+            if (conversation.participants && conversation.participants.length > 0) {
+                conversation.participants.forEach(p => {
+                    if (p.muteUntil && p.muteUntil > now) {
+                        mutedUserIds.add(p.userId);
+                    }
+                });
+            }
+
+            recipientUserIds = recipientUserIds.filter(id => !mutedUserIds.has(id));
+            console.log(`[MESSAGE] Recipient user ids after mute filter:`, recipientUserIds);
 
             for (const recipientId of recipientUserIds) {
               const sockets = getSockets(recipientId);
@@ -430,6 +445,66 @@ function chatHandler(io) {
       } catch (err) {
         console.error('Poll vote error:', err);
         socket.emit('message:error', { error: 'Failed to vote on poll' });
+      }
+    });
+
+    // Mute Conversation
+    socket.on('conversation:mute', async (data) => {
+      try {
+        let parsedData;
+        try {
+          parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        } catch (err) {
+          console.error('Invalid JSON:', data);
+          return;
+        }
+
+        const { conversationId, duration } = parsedData;
+        if (!conversationId || !duration) return;
+
+        let muteUntil;
+        switch (duration) {
+          case '1day':   muteUntil = new Date(Date.now() + 24*60*60*1000); break;
+          case '1week':  muteUntil = new Date(Date.now() + 7*24*60*60*1000); break;
+          case 'always': muteUntil = new Date('9999-12-31'); break;
+          default: return;
+        }
+
+        await Conversation.updateOne(
+          { _id: conversationId, 'participants.userId': userId },
+          { $set: { 'participants.$.muteUntil': muteUntil } }
+        );
+
+        socket.emit('conversation:mute_updated', { conversationId, muteUntil });
+      } catch (err) {
+        console.error('Mute error:', err);
+        socket.emit('message:error', { error: 'Failed to mute conversation' });
+      }
+    });
+
+    // Unmute Conversation
+    socket.on('conversation:unmute', async (data) => {
+      try {
+        let parsedData;
+        try {
+          parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        } catch (err) {
+          console.error('Invalid JSON:', data);
+          return;
+        }
+
+        const { conversationId } = parsedData;
+        if (!conversationId) return;
+
+        await Conversation.updateOne(
+          { _id: conversationId, 'participants.userId': userId },
+          { $set: { 'participants.$.muteUntil': null } }
+        );
+
+        socket.emit('conversation:mute_updated', { conversationId, muteUntil: null });
+      } catch (err) {
+        console.error('Unmute error:', err);
+        socket.emit('message:error', { error: 'Failed to unmute conversation' });
       }
     });
 

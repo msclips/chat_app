@@ -66,6 +66,17 @@ router.post('/:groupId/init', async (req, res) => {
             where: { group_id: groupId, user_id: currentUser.id }
         });
 
+        // Add user to participants with default mute if not already there and is a member
+        const userParticipant = conversation.participants.find(p => p.userId === currentUser.id);
+        if (!userParticipant && membership) {
+            conversation.participants.push({
+                userId: currentUser.id,
+                username: currentUser.user_name,
+                muteUntil: new Date('9999-12-31') // Muted by default
+            });
+            await conversation.save();
+        }
+
         res.json({ 
             conversation, 
             isMember: !!membership 

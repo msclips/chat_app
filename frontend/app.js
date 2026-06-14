@@ -8,6 +8,7 @@ let communities = [];
 let allUsers = [];
 let replyingToMessage = null;
 let editingMessageId = null;
+let muteStates = {}; // { conversationId: muteUntil }
 
 // DOM Elements
 const loginView = document.getElementById('login-view');
@@ -45,6 +46,30 @@ const submitPollBtn = document.getElementById('submit-poll-btn');
 const pollQuestionInput = document.getElementById('poll-question');
 const pollAllowMultiple = document.getElementById('poll-allow-multiple');
 const pollShowVoters = document.getElementById('poll-show-voters');
+
+// Mute Elements
+const muteToggleBtn = document.getElementById('mute-toggle-btn');
+const muteModal = document.getElementById('mute-modal');
+const closeMuteModalBtn = document.getElementById('close-mute-modal');
+
+function isMuted(conversationId) {
+    const muteUntil = muteStates[conversationId];
+    if (!muteUntil) return false;
+    return new Date(muteUntil) > new Date();
+}
+
+function getMuteLabel(conversationId) {
+    const muteUntil = muteStates[conversationId];
+    if (!muteUntil) return '';
+    const d = new Date(muteUntil);
+    if (d.getFullYear() >= 9999) return 'Muted';
+    const diff = d - new Date();
+    if (diff <= 0) return '';
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    if (days <= 1) return 'Muted · 1d';
+    if (days <= 7) return `Muted · ${days}d`;
+    return 'Muted';
+}
 
 function cancelReply() {
     replyingToMessage = null;
@@ -245,6 +270,25 @@ function initSocket() {
         }
     });
 
+    socket.on('conversation:mute_updated', ({ conversationId, muteUntil }) => {
+        muteStates[conversationId] = muteUntil;
+        renderConversations();
+        renderCommunities();
+        // Update header icon if this is the active chat
+        if (conversationId === activeConversationId) {
+            const muteBtn = document.getElementById('mute-toggle-btn');
+            if (isMuted(conversationId)) {
+                muteBtn.innerHTML = '<i class="ph ph-bell-slash"></i>';
+                muteBtn.title = 'Unmute';
+                muteBtn.classList.add('muted');
+            } else {
+                muteBtn.innerHTML = '<i class="ph ph-bell"></i>';
+                muteBtn.title = 'Mute';
+                muteBtn.classList.remove('muted');
+            }
+        }
+    });
+
     socket.on('conversation:updated', ({ conversationId, lastMessage }) => {
         updateConversationPreview(lastMessage);
     });
@@ -272,6 +316,12 @@ async function fetchConversations() {
             headers: getHeaders()
         });
         conversations = await response.json();
+        
+        conversations.forEach(conv => {
+            const me = conv.participants.find(p => p.userId === currentUser.id);
+            muteStates[conv._id] = me?.muteUntil || null;
+        });
+
         renderConversations();
         
         if (!activeConversationId && conversations.length > 0) {
@@ -323,6 +373,8 @@ function renderConversations() {
         const name = otherParticipant ? otherParticipant.username : 'Group Chat';
         const lastMsg = conv.lastMessage ? 'New message...' : 'No messages yet';
         
+        const muteIcon = isMuted(conv._id) ? '<i class="ph ph-bell-slash mute-indicator" title="Muted"></i>' : '';
+
         const div = document.createElement('div');
         div.className = `conv-item ${conv._id === activeConversationId ? 'active' : ''}`;
         div.onclick = () => selectConversation(conv._id, name);
@@ -331,7 +383,7 @@ function renderConversations() {
             <div class="avatar">${name.charAt(0).toUpperCase()}</div>
             <div class="conv-info">
                 <div class="conv-name-row">
-                    <h4>${name}</h4>
+                    <h4>${name}${muteIcon}</h4>
                     <span class="conv-time">${formatDate(conv.updatedAt)}</span>
                 </div>
                 <p class="conv-last-msg" id="last-msg-${conv._id}">${lastMsg}</p>
@@ -350,6 +402,13 @@ function renderCommunities() {
     communities.forEach(comm => {
         const name = comm.group_name;
         
+        // Use group_id as conversationId mapping for mute state? We need the actual conv id.
+        // For communities, the communityId (groupId) might be mapped to convId after init, 
+        // but for render list, we don't have conv id yet unless fetched. We can rely on `muteStates` if mapped.
+        // In fetchCommunities, we only get groups. We will handle community mute icon differently if needed, 
+        // or fetch conversations to get community conv ID. For now, communities are muted by default.
+        const muteIcon = '<i class="ph ph-bell-slash mute-indicator" title="Muted"></i>';
+
         const div = document.createElement('div');
         div.className = `conv-item ${comm.group_id === activeCommunityId ? 'active' : ''}`;
         div.onclick = () => selectCommunity(comm.group_id, name);
@@ -358,7 +417,7 @@ function renderCommunities() {
             <div class="avatar" style="background: linear-gradient(135deg, #f59e0b, #d97706)">${name.charAt(0).toUpperCase()}</div>
             <div class="conv-info">
                 <div class="conv-name-row">
-                    <h4>${name}</h4>
+                    <h4>${name}${muteIcon}</h4>
                 </div>
                 <p class="conv-last-msg">Community Chat</p>
             </div>
@@ -460,6 +519,18 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
         document.querySelector('.status-text').textContent = 'Online';
     }
 
+    const muteBtn = document.getElementById('mute-toggle-btn');
+    if (isMuted(id) || (isCommunity && muteStates[id] === undefined)) {
+        // If community and undefined, assume default muted unless fetched otherwise
+        muteBtn.innerHTML = '<i class="ph ph-bell-slash"></i>';
+        muteBtn.title = 'Unmute';
+        muteBtn.classList.add('muted');
+    } else {
+        muteBtn.innerHTML = '<i class="ph ph-bell"></i>';
+        muteBtn.title = 'Mute';
+        muteBtn.classList.remove('muted');
+    }
+
     noChatSelected.classList.add('hidden');
     activeChat.classList.remove('hidden');
     
@@ -528,9 +599,13 @@ async function selectCommunity(groupId, name) {
         const data = await response.json();
         
         if (response.ok) {
-            const conversation = data.conversation;
-            socket.emit('conversations:join', [conversation._id]);
-            selectConversation(conversation._id, name, true, data.isMember);
+            activeConversationId = data.conversation._id;
+            
+            // Populate mute state for community conversation if not fetched yet
+            const me = data.conversation.participants.find(p => p.userId === currentUser.id);
+            muteStates[activeConversationId] = me?.muteUntil || null;
+
+            selectConversation(data.conversation._id, name, true, data.isMember);
         } else {
             alert(data.message || 'Error joining community');
         }
@@ -836,8 +911,33 @@ createPollBtn.addEventListener('click', () => {
     pollModal.classList.remove('hidden');
 });
 
-closePollModalBtn.addEventListener('click', () => {
-    pollModal.classList.add('hidden');
+if (closePollModalBtn) {
+    closePollModalBtn.addEventListener('click', () => pollModal.classList.add('hidden'));
+}
+
+if (muteToggleBtn) {
+    muteToggleBtn.addEventListener('click', () => {
+        if (!activeConversationId) return;
+        if (isMuted(activeConversationId) || (activeCommunityId && muteStates[activeConversationId] === undefined)) {
+            // Unmute
+            socket.emit('conversation:unmute', { conversationId: activeConversationId });
+        } else {
+            // Show modal
+            muteModal.classList.remove('hidden');
+        }
+    });
+}
+
+if (closeMuteModalBtn) {
+    closeMuteModalBtn.addEventListener('click', () => muteModal.classList.add('hidden'));
+}
+
+document.querySelectorAll('.mute-option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const duration = btn.dataset.duration;
+        socket.emit('conversation:mute', { conversationId: activeConversationId, duration });
+        muteModal.classList.add('hidden');
+    });
 });
 
 pollModal.addEventListener('click', (e) => {
