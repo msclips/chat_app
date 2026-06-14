@@ -102,6 +102,7 @@ const sendChatNotification = async ({
         }
 
         const messages = [];
+        const uniqueTokens = new Set();
         let androidTokensCount = 0;
         let webTokensCount = 0;
 
@@ -112,7 +113,8 @@ const sendChatNotification = async ({
             };
 
             // send to Android if token available
-            if (user.android_token) {
+            if (user.android_token && !uniqueTokens.has(user.android_token)) {
+                uniqueTokens.add(user.android_token);
                 androidTokensCount++;
                 messages.push({
                     token: user.android_token,
@@ -125,7 +127,8 @@ const sendChatNotification = async ({
             }
 
             // send to Web if token available
-            if (user.web_token) {
+            if (user.web_token && !uniqueTokens.has(user.web_token)) {
+                uniqueTokens.add(user.web_token);
                 webTokensCount++;
                 messages.push({
                     token: user.web_token,
