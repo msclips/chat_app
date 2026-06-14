@@ -62,9 +62,10 @@ function chatHandler(io) {
           return;
         }
         console.log(`[MESSAGE] Parsed Data:`, parsedData);
-        const { conversationId, content, messageType = 'text', tempId, replyTo } = parsedData;
+        const { conversationId, content, messageType = 'text', tempId, replyTo, pollData } = parsedData;
 
-        if (!conversationId || !content) return;
+        // For poll messages, content might be empty or same as question.
+        if (!conversationId || (!content && messageType !== 'poll')) return;
        
         // Verify user is participant or has community access
         const conversation = await Conversation.findById(conversationId);
@@ -117,7 +118,8 @@ function chatHandler(io) {
           senderId: userId,
           senderName: username,
           messageType,
-          content,
+          content: content || (messageType === 'poll' ? 'Poll: ' + pollData?.question : ''),
+          pollData: messageType === 'poll' ? pollData : undefined,
           replyTo: replyTo || null,
           readBy: [{ userId, readAt: new Date() }]
         });
@@ -379,6 +381,55 @@ function chatHandler(io) {
       } catch (err) {
         console.error('Message delete error:', err);
         socket.emit('message:error', { error: 'Failed to delete message' });
+      }
+    });
+    // Poll Vote
+    socket.on('message:poll_vote', async (data) => {
+      try {
+        let parsedData;
+        try {
+          parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        } catch (err) {
+          console.error('Invalid JSON:', data);
+          return;
+        }
+
+        const { messageId, optionIds } = parsedData; // optionIds is an array of option _id strings or indices, let's assume indices or option text
+        if (!messageId || !optionIds || !Array.isArray(optionIds)) return;
+
+        const message = await Message.findById(messageId);
+        if (!message || message.messageType !== 'poll') return;
+
+        const { pollData } = message;
+
+        // Remove user's previous votes
+        pollData.options.forEach(opt => {
+          opt.votes = opt.votes.filter(id => id !== userId);
+        });
+
+        // Add new votes
+        let votesAdded = 0;
+        for (const optId of optionIds) {
+           const option = pollData.options.find(o => (o._id && o._id.toString() === optId.toString()) || o.option === optId);
+           if (option) {
+              option.votes.push(userId);
+              votesAdded++;
+           }
+           if (!pollData.allowMultiple && votesAdded >= 1) {
+              break; // Only allow one vote if allowMultiple is false
+           }
+        }
+
+        await message.save();
+
+        const messageData = message.toObject();
+
+        socket.emit('message:updated', messageData);
+        socket.to(`conv:${message.conversationId}`).emit('message:updated', messageData);
+        
+      } catch (err) {
+        console.error('Poll vote error:', err);
+        socket.emit('message:error', { error: 'Failed to vote on poll' });
       }
     });
 

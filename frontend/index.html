@@ -138,8 +138,9 @@
                     </div>
 
                     <footer class="chat-footer">
-                        <button class="attach-btn"><i class="ph ph-plus"></i></button>
-                        <form id="message-form">
+                        <button class="attach-btn" title="Attach File"><i class="ph ph-plus"></i></button>
+                        <button class="poll-btn" id="create-poll-btn" title="Create Poll" style="background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 8px; transition: all 0.2s;"><i class="ph ph-chart-bar"></i></button>
+                        <form id="message-form" style="flex: 1; display: flex; align-items: center; gap: 8px;">
                             <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
                             <button type="submit" id="send-btn">
                                 <i class="ph ph-paper-plane-right"></i>
@@ -148,6 +149,38 @@
                     </footer>
                 </div>
             </main>
+        </div>
+
+        <!-- Poll Creation Modal -->
+        <div id="poll-modal" class="modal hidden">
+            <div class="modal-content" style="max-width: 400px;">
+                <header class="modal-header">
+                    <h3>Create Poll</h3>
+                    <button id="close-poll-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body">
+                    <div style="margin-bottom: 16px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Question</label>
+                        <input type="text" id="poll-question" placeholder="Ask a question" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color);">
+                    </div>
+                    <div id="poll-options-container" style="margin-bottom: 16px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Options</label>
+                        <!-- Options will be added here -->
+                    </div>
+                    <button id="add-poll-option-btn" style="background: none; border: none; color: #3b82f6; font-weight: 500; cursor: pointer; padding: 0; margin-bottom: 16px; display: flex; align-items: center; gap: 4px;"><i class="ph ph-plus"></i> Add Option</button>
+                    
+                    <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="poll-allow-multiple">
+                        <label for="poll-allow-multiple">Allow multiple answers</label>
+                    </div>
+                    <div style="margin-bottom: 24px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="poll-show-voters">
+                        <label for="poll-show-voters">Show voters</label>
+                    </div>
+                    
+                    <button id="submit-poll-btn" class="btn" style="width: 100%; justify-content: center;">Create Poll</button>
+                </div>
+            </div>
         </div>
 
         <!-- New Chat Modal -->

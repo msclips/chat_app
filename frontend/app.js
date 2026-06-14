@@ -35,6 +35,17 @@ const editIndicator = document.getElementById('edit-indicator');
 const editToText = document.getElementById('edit-to-text');
 const cancelEditBtn = document.getElementById('cancel-edit-btn');
 
+// Poll Elements
+const createPollBtn = document.getElementById('create-poll-btn');
+const pollModal = document.getElementById('poll-modal');
+const closePollModalBtn = document.getElementById('close-poll-modal');
+const pollOptionsContainer = document.getElementById('poll-options-container');
+const addPollOptionBtn = document.getElementById('add-poll-option-btn');
+const submitPollBtn = document.getElementById('submit-poll-btn');
+const pollQuestionInput = document.getElementById('poll-question');
+const pollAllowMultiple = document.getElementById('poll-allow-multiple');
+const pollShowVoters = document.getElementById('poll-show-voters');
+
 function cancelReply() {
     replyingToMessage = null;
     if (replyIndicator) replyIndicator.classList.add('hidden');
@@ -192,17 +203,34 @@ function initSocket() {
         if (updatedMessage.conversationId === activeConversationId) {
             const msgEl = document.querySelector(`.message[data-id="${updatedMessage._id}"]`);
             if (msgEl) {
-                const contentEl = msgEl.querySelector('.message-content');
-                if (contentEl) contentEl.textContent = updatedMessage.content;
-                
-                let editedLabel = msgEl.querySelector('.edited-label');
-                if (!editedLabel && updatedMessage.isEdited) {
-                    const timeEl = msgEl.querySelector('.message-time');
-                    if (timeEl) {
-                        editedLabel = document.createElement('span');
-                        editedLabel.className = 'edited-label';
-                        editedLabel.textContent = ' (edited)';
-                        timeEl.appendChild(editedLabel);
+                if (updatedMessage.messageType === 'poll') {
+                    // For polls, it's easier to just recreate and replace
+                    const nextSibling = msgEl.nextSibling;
+                    msgEl.remove();
+                    
+                    // Temporary flag to prevent auto scroll down if not at bottom
+                    const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
+                    
+                    appendMessage(updatedMessage);
+                    const newMsgEl = messagesContainer.lastElementChild;
+                    if (nextSibling) {
+                        messagesContainer.insertBefore(newMsgEl, nextSibling);
+                    }
+                    
+                    if (isAtBottom) scrollToBottom();
+                } else {
+                    const contentEl = msgEl.querySelector('.message-content');
+                    if (contentEl) contentEl.textContent = updatedMessage.content;
+                    
+                    let editedLabel = msgEl.querySelector('.edited-label');
+                    if (!editedLabel && updatedMessage.isEdited) {
+                        const timeEl = msgEl.querySelector('.message-time');
+                        if (timeEl) {
+                            editedLabel = document.createElement('span');
+                            editedLabel.className = 'edited-label';
+                            editedLabel.textContent = ' (edited)';
+                            timeEl.appendChild(editedLabel);
+                        }
                     }
                 }
             }
@@ -531,16 +559,106 @@ function appendMessage(message) {
     
     let editedHTML = message.isEdited ? '<span class="edited-label"> (edited)</span>' : '';
 
+    let contentHTML = '';
+    if (message.messageType === 'poll' && message.pollData) {
+        const { question, options, showVoters } = message.pollData;
+        let totalVotes = 0;
+        options.forEach(opt => totalVotes += opt.votes.length);
+
+        let optionsHTML = '';
+        options.forEach(opt => {
+            const voteCount = opt.votes.length;
+            const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+            const hasVoted = opt.votes.includes(currentUser.id);
+            
+            let votersHTML = '';
+            if (showVoters && voteCount > 0) {
+                const voterNames = opt.votes.map(vId => {
+                    const u = allUsers.find(user => user.id === vId);
+                    return u ? u.user_name : 'User ' + vId;
+                });
+                
+                votersHTML = `
+                <div class="poll-voters">
+                    <div style="font-weight: 600; margin-bottom: 4px; color: var(--primary-light);">Voters:</div>
+                    <ul style="margin: 0; padding-left: 16px; list-style: disc;">
+                        ${voterNames.map(name => `<li>${escapeHTML(name)}</li>`).join('')}
+                    </ul>
+                </div>`;
+            }
+
+            optionsHTML += `
+                <div class="poll-option ${hasVoted ? 'voted' : ''} ${showVoters && voteCount > 0 ? 'show-voters-btn' : ''}" data-option-id="${opt._id || opt.option}">
+                    <div class="poll-option-bar" style="width: ${percentage}%"></div>
+                    <div class="poll-option-content">
+                        <span class="poll-option-text">${escapeHTML(opt.option)}</span>
+                        <span class="poll-option-stats">${voteCount} (${percentage}%)</span>
+                    </div>
+                    ${votersHTML}
+                </div>
+            `;
+        });
+
+        contentHTML = `
+            <div class="poll-container">
+                <div class="poll-question">${escapeHTML(question)}</div>
+                ${optionsHTML}
+                <div class="poll-total-votes">${totalVotes} total votes</div>
+            </div>
+        `;
+    } else {
+        contentHTML = `<div class="message-content">${escapeHTML(message.content)}</div>`;
+    }
+
     div.innerHTML = `
         ${replyHTML}
-        <div class="message-content">${escapeHTML(message.content)}</div>
+        ${contentHTML}
         <div class="message-time">${formatTime(message.createdAt)}${editedHTML}</div>
         <div class="message-actions">
             <i class="ph ph-arrow-u-up-left reply-btn" title="Reply"></i>
-            ${isSent ? '<i class="ph ph-pencil-simple edit-btn" title="Edit"></i>' : ''}
+            ${isSent && message.messageType !== 'poll' ? '<i class="ph ph-pencil-simple edit-btn" title="Edit"></i>' : ''}
             <i class="ph ph-trash delete-btn" title="Delete"></i>
         </div>
     `;
+
+    if (message.messageType === 'poll') {
+        const pollOptions = div.querySelectorAll('.poll-option');
+        pollOptions.forEach(optDiv => {
+            optDiv.addEventListener('click', () => {
+                const optionId = optDiv.getAttribute('data-option-id');
+                const msgId = message._id || div.dataset.id;
+                if (!msgId) return;
+
+                const isVoted = optDiv.classList.contains('voted');
+                let newOptionIds = [];
+
+                if (message.pollData.allowMultiple) {
+                    // Collect all currently voted options
+                    const allVoted = Array.from(div.querySelectorAll('.poll-option.voted'))
+                        .map(el => el.getAttribute('data-option-id'));
+                    
+                    if (isVoted) {
+                        newOptionIds = allVoted.filter(id => id !== optionId);
+                    } else {
+                        newOptionIds = [...allVoted, optionId];
+                    }
+                } else {
+                    // Single choice: if clicking already voted, maybe we want to unvote? Or just switch.
+                    // Let's allow unvoting if clicking the same, else switch.
+                    if (isVoted) {
+                        newOptionIds = [];
+                    } else {
+                        newOptionIds = [optionId];
+                    }
+                }
+
+                socket.emit('message:poll_vote', {
+                    messageId: msgId,
+                    optionIds: newOptionIds
+                });
+            });
+        });
+    }
     
     const replyBtn = div.querySelector('.reply-btn');
     if (replyBtn) {
@@ -678,6 +796,110 @@ newChatModal.addEventListener('click', (e) => {
 
 userSearchInput.addEventListener('input', (e) => {
     renderUsers(e.target.value);
+});
+
+// --- Poll Modal Events ---
+
+let pollOptionCount = 0;
+
+function createPollOptionInput() {
+    pollOptionCount++;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'poll-option-input-wrapper';
+    wrapper.innerHTML = `
+        <input type="text" class="poll-option-input" placeholder="Option ${pollOptionCount}">
+        <button class="poll-remove-option"><i class="ph ph-trash"></i></button>
+    `;
+    wrapper.querySelector('.poll-remove-option').addEventListener('click', () => {
+        if (pollOptionsContainer.children.length > 2) {
+            wrapper.remove();
+        } else {
+            alert('A poll must have at least 2 options.');
+        }
+    });
+    return wrapper;
+}
+
+function resetPollModal() {
+    pollQuestionInput.value = '';
+    pollAllowMultiple.checked = false;
+    pollShowVoters.checked = false;
+    pollOptionsContainer.innerHTML = '<label style="display: block; margin-bottom: 8px; font-weight: 500;">Options</label>';
+    pollOptionCount = 0;
+    pollOptionsContainer.appendChild(createPollOptionInput());
+    pollOptionsContainer.appendChild(createPollOptionInput());
+}
+
+createPollBtn.addEventListener('click', () => {
+    if (!activeConversationId) return;
+    resetPollModal();
+    pollModal.classList.remove('hidden');
+});
+
+closePollModalBtn.addEventListener('click', () => {
+    pollModal.classList.add('hidden');
+});
+
+pollModal.addEventListener('click', (e) => {
+    if (e.target === pollModal) {
+        pollModal.classList.add('hidden');
+    }
+});
+
+addPollOptionBtn.addEventListener('click', () => {
+    pollOptionsContainer.appendChild(createPollOptionInput());
+});
+
+submitPollBtn.addEventListener('click', () => {
+    const question = pollQuestionInput.value.trim();
+    if (!question) return alert('Please enter a poll question.');
+
+    const optionInputs = pollOptionsContainer.querySelectorAll('.poll-option-input');
+    const options = [];
+    optionInputs.forEach(input => {
+        const val = input.value.trim();
+        if (val) options.push({ option: val, votes: [] });
+    });
+
+    if (options.length < 2) return alert('Please provide at least 2 options.');
+
+    const pollData = {
+        question,
+        options,
+        allowMultiple: pollAllowMultiple.checked,
+        showVoters: pollShowVoters.checked
+    };
+
+    const tempId = Date.now().toString();
+    const messageData = {
+        conversationId: activeConversationId,
+        content: '',
+        messageType: 'poll',
+        pollData: pollData,
+        tempId: tempId,
+        replyTo: replyingToMessage ? replyingToMessage._id : null
+    };
+
+    appendMessage({
+        senderId: currentUser.id,
+        content: '',
+        messageType: 'poll',
+        pollData: pollData,
+        createdAt: new Date().toISOString(),
+        replyTo: replyingToMessage ? {
+            _id: replyingToMessage._id,
+            senderName: replyingToMessage.senderName,
+            content: replyingToMessage.content
+        } : null
+    });
+    
+    messagesContainer.lastElementChild.setAttribute('data-temp-id', tempId);
+    messagesContainer.lastElementChild.classList.add('pending');
+
+    socket.emit('message:send', messageData);
+    pollModal.classList.add('hidden');
+    cancelReply();
+    scrollToBottom();
 });
 
 // --- Utilities ---

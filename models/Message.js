@@ -10,8 +10,17 @@ const messageSchema = new mongoose.Schema({
   senderName: { type: String, required: true },
   messageType: {
     type: String,
-    enum: ['text', 'file', 'image'],
+    enum: ['text', 'file', 'image', 'poll'],
     default: 'text'
+  },
+  pollData: {
+    question: { type: String },
+    options: [{
+      option: { type: String },
+      votes: [{ type: Number }] // Array of userIds who voted
+    }],
+    allowMultiple: { type: Boolean, default: false },
+    showVoters: { type: Boolean, default: false }
   },
   content: { type: String, default: '' },
   fileUrl: { type: String, default: null },
