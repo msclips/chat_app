@@ -4,6 +4,7 @@ const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const GroupUser = require('../models/GroupUser');
+const GroupMember = require('../models/GroupMember');
 
 /**
  * Helper to extract user identity directly from request headers, body, or query parameters.
@@ -74,7 +75,7 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
   const currentUser = getRequestUser(req);
   try {
-    const memberships = await GroupUser.findAll({
+    const communityMemberships = await GroupUser.findAll({
       where: {
         user_id: currentUser.id,
         status: 1,
@@ -82,7 +83,14 @@ router.get('/', async (req, res) => {
       }
     });
 
-    const groupIds = memberships.map((m) => m.group_id);
+    const communityIds = communityMemberships.map((m) => m.group_id);
+
+    const groupMemberships = await GroupMember.find({
+      userId: currentUser.id,
+      status: { $in: ['approved', 'pending'] } // include pending to be safe, or just 'approved'
+    });
+    const mongoGroupIds = groupMemberships.map((m) => m.groupId);
+
     const filters = [
       {
         'participants.userId': currentUser.id,
@@ -90,20 +98,32 @@ router.get('/', async (req, res) => {
       }
     ];
 
-    if (groupIds.length > 0) {
+    if (mongoGroupIds.length > 0) {
       filters.push({
         type: 'group',
-        groupId: { $in: groupIds },
-        status: { $ne: 'blocked' }
-      });
-      filters.push({
-        type: 'community',
-        communityId: { $in: groupIds },
+        groupId: { $in: mongoGroupIds },
         status: { $ne: 'blocked' }
       });
     }
 
-    const conversations = await Conversation.find({ $or: filters }).sort({ updatedAt: -1 });
+    if (communityIds.length > 0) {
+      filters.push({
+        type: 'community',
+        communityId: { $in: communityIds },
+        status: { $ne: 'blocked' }
+      });
+    }
+
+    const conversations = await Conversation.find({ $or: filters }).populate('lastMessage').sort({ updatedAt: -1 }).lean();
+
+    for (const conv of conversations) {
+      if (conv.type === 'group' && conv.groupId) {
+        const mem = groupMemberships.find(m => m.groupId.toString() === conv.groupId.toString());
+        if (mem) {
+          conv.groupMemberStatus = mem.status;
+        }
+      }
+    }
 
     res.json(conversations);
   } catch (err) {

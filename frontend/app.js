@@ -361,8 +361,15 @@ async function fetchConversations() {
         
         if (!activeConversationId && conversations.length > 0) {
             const firstConv = conversations[0];
-            const otherParticipant = firstConv.participants.find(p => p.userId !== currentUser.id);
-            const name = otherParticipant ? otherParticipant.username : 'Group Chat';
+            let name = 'Group Chat';
+            if (firstConv.type === 'private') {
+                const otherParticipant = firstConv.participants.find(p => p.userId !== currentUser.id);
+                name = otherParticipant ? otherParticipant.username : 'Deleted User';
+            } else if (firstConv.type === 'group') {
+                name = firstConv.groupName || 'Group Chat';
+            } else if (firstConv.type === 'community') {
+                name = firstConv.communityName || 'Community Chat';
+            }
             selectConversation(firstConv._id, name);
         }
 
@@ -404,9 +411,26 @@ async function fetchUsers() {
 function renderConversations() {
     conversationsContainer.innerHTML = '';
     conversations.forEach(conv => {
-        const otherParticipant = conv.participants.find(p => p.userId !== currentUser.id);
-        const name = otherParticipant ? otherParticipant.username : 'Group Chat';
-        const lastMsg = conv.lastMessage ? 'New message...' : 'No messages yet';
+        let name = 'Group Chat';
+        if (conv.type === 'private') {
+            const otherParticipant = conv.participants.find(p => p.userId !== currentUser.id);
+            name = otherParticipant ? otherParticipant.username : 'Deleted User';
+        } else if (conv.type === 'group') {
+            name = conv.groupName || 'Group Chat';
+        } else if (conv.type === 'community') {
+            name = conv.communityName || 'Community Chat';
+        }
+
+        let lastMsg = 'No messages yet';
+        if (conv.lastMessage) {
+            if (typeof conv.lastMessage === 'object' && conv.lastMessage.content) {
+                lastMsg = conv.lastMessage.content;
+            } else if (typeof conv.lastMessage === 'object' && conv.lastMessage.messageType === 'poll') {
+                lastMsg = 'Poll: ' + (conv.lastMessage.pollData ? conv.lastMessage.pollData.question : '');
+            } else {
+                lastMsg = 'New message...';
+            }
+        }
         
         const muteIcon = isMuted(conv._id) ? '<i class="ph ph-bell-slash mute-indicator" title="Muted"></i>' : '';
 
@@ -634,7 +658,7 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     
     if (!isCommunity) {
         const activeConv = conversations.find(c => c._id === id);
-        if (activeConv && activeConv.status === 'pending') {
+        if (activeConv && activeConv.type === 'private' && activeConv.status === 'pending') {
             if (activeConv.initiatorId !== currentUser.id) {
                 isPendingRecipient = true;
                 document.getElementById('request-sender-name').textContent = name;
@@ -1190,7 +1214,20 @@ document.getElementById('btn-accept').addEventListener('click', async () => {
 
 document.getElementById('btn-reject').addEventListener('click', async () => {
     if (!activeConversationId) return;
+    const conv = conversations.find(c => c._id === activeConversationId);
+    
     if (!confirm('Are you sure you want to reject this request? The sender will be blocked and this chat will be hidden.')) return;
+
+    if (conv && conv.type === 'group') {
+        socket.emit('group:approve_request', { groupId: conv.groupId, status: 'rejected' });
+        conversations = conversations.filter(c => c._id !== activeConversationId);
+        renderConversations();
+        activeConversationId = null;
+        activeChat.classList.add('hidden');
+        noChatSelected.classList.remove('hidden');
+        return;
+    }
+
     try {
         const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/reject`, {
             method: 'POST',

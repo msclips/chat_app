@@ -536,7 +536,7 @@ function chatHandler(io) {
             
             if (!name) return socket.emit('group:error', { error: 'Group name is required' });
 
-            const conversation = new Conversation({ type: 'group', groupName: name, participants: [] });
+            const conversation = new Conversation({ type: 'group', groupName: name, participants: [], status: 'accepted' });
             await conversation.save();
 
             const group = new Group({
