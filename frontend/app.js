@@ -27,6 +27,18 @@ const newChatModal = document.getElementById('new-chat-modal');
 const closeModalBtn = document.getElementById('close-modal');
 const usersListContainer = document.getElementById('users-list');
 const userSearchInput = document.getElementById('user-search-input');
+
+// Group Elements
+const newGroupBtn = document.getElementById('new-group-btn');
+const newGroupModal = document.getElementById('new-group-modal');
+const closeGroupModalBtn = document.getElementById('close-group-modal');
+const groupNameInput = document.getElementById('group-name-input');
+const groupDescInput = document.getElementById('group-desc-input');
+const groupUserSearchInput = document.getElementById('group-user-search-input');
+const groupUsersListContainer = document.getElementById('group-users-list');
+const createGroupSubmitBtn = document.getElementById('create-group-submit-btn');
+let selectedGroupMembers = new Set();
+
 const replyIndicator = document.getElementById('reply-indicator');
 const replyToName = document.getElementById('reply-to-name');
 const replyToText = document.getElementById('reply-to-text');
@@ -263,6 +275,29 @@ function initSocket() {
         updateConversationPreview(updatedMessage);
     });
 
+    socket.on('group:created', ({ group, conversationId }) => {
+        fetchConversations();
+    });
+
+    socket.on('group:invitation_received', ({ group }) => {
+        fetchConversations();
+    });
+
+    socket.on('group:member_joined', ({ groupId, userId, username }) => {
+        fetchConversations();
+    });
+
+    socket.on('group:member_removed', ({ groupId, userId }) => {
+        if (userId === currentUser.id) {
+            alert('You have been removed from the group.');
+            fetchConversations();
+            if (activeConversationId) {
+                activeChat.classList.add('hidden');
+                noChatSelected.classList.remove('hidden');
+            }
+        }
+    });
+
     socket.on('message:deleted', ({ messageId, deleteType, conversationId }) => {
         const msgEl = document.querySelector(`.message[data-id="${messageId}"]`);
         if (msgEl) {
@@ -377,19 +412,66 @@ function renderConversations() {
 
         const div = document.createElement('div');
         div.className = `conv-item ${conv._id === activeConversationId ? 'active' : ''}`;
-        div.onclick = () => selectConversation(conv._id, name);
+        div.onclick = () => selectConversation(conv._id, name, conv.type === 'community');
         
+        // Show pending tag for groups
+        const pendingTag = (conv.type === 'group' && conv.groupMemberStatus === 'pending') ? '<span style="color: #f59e0b; font-size: 10px; margin-left: 5px;">(Invite)</span>' : '';
+
         div.innerHTML = `
             <div class="avatar">${name.charAt(0).toUpperCase()}</div>
             <div class="conv-info">
                 <div class="conv-name-row">
-                    <h4>${name}${muteIcon}</h4>
+                    <h4>${name}${pendingTag}${muteIcon}</h4>
                     <span class="conv-time">${formatDate(conv.updatedAt)}</span>
                 </div>
                 <p class="conv-last-msg" id="last-msg-${conv._id}">${lastMsg}</p>
             </div>
         `;
         conversationsContainer.appendChild(div);
+    });
+}
+
+function renderGroupUsers(filter = '') {
+    groupUsersListContainer.innerHTML = '';
+    const filteredUsers = allUsers.filter(u => 
+        u.id !== currentUser.id && u.user_name.toLowerCase().includes(filter.toLowerCase())
+    );
+
+    if (filteredUsers.length === 0) {
+        groupUsersListContainer.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">No users found</p>';
+        return;
+    }
+
+    filteredUsers.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'user-item';
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        
+        const isSelected = selectedGroupMembers.has(user.id);
+        
+        div.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="avatar">${user.user_name.charAt(0).toUpperCase()}</div>
+                <div class="user-name">${user.user_name}</div>
+            </div>
+            <input type="checkbox" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
+        `;
+        
+        div.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'INPUT') {
+                const cb = div.querySelector('input');
+                cb.checked = !cb.checked;
+            }
+            if (div.querySelector('input').checked) {
+                selectedGroupMembers.add(user.id);
+            } else {
+                selectedGroupMembers.delete(user.id);
+            }
+        });
+        
+        groupUsersListContainer.appendChild(div);
     });
 }
 
@@ -560,6 +642,10 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
             } else {
                 waitingBanner.classList.remove('hidden');
             }
+        } else if (activeConv && activeConv.type === 'group' && activeConv.groupMemberStatus === 'pending') {
+            isPendingRecipient = true;
+            document.getElementById('request-sender-name').textContent = name + ' (Group Invite)';
+            requestBanner.classList.remove('hidden');
         }
     }
     
@@ -873,6 +959,47 @@ userSearchInput.addEventListener('input', (e) => {
     renderUsers(e.target.value);
 });
 
+// --- Group Modal Events ---
+if (newGroupBtn) {
+    newGroupBtn.addEventListener('click', () => {
+        if (newGroupModal) newGroupModal.classList.remove('hidden');
+        if (groupNameInput) groupNameInput.value = '';
+        if (groupDescInput) groupDescInput.value = '';
+        if (groupUserSearchInput) groupUserSearchInput.value = '';
+        selectedGroupMembers.clear();
+        renderGroupUsers();
+        if (groupNameInput) groupNameInput.focus();
+    });
+}
+
+if (closeGroupModalBtn) {
+    closeGroupModalBtn.addEventListener('click', () => {
+        newGroupModal.classList.add('hidden');
+    });
+}
+
+if (groupUserSearchInput) {
+    groupUserSearchInput.addEventListener('input', (e) => {
+        renderGroupUsers(e.target.value);
+    });
+}
+
+if (createGroupSubmitBtn) {
+    createGroupSubmitBtn.addEventListener('click', () => {
+        const name = groupNameInput.value.trim();
+        if (!name) return alert('Group name is required.');
+        
+        socket.emit('group:create', {
+            name,
+            description: groupDescInput.value.trim(),
+            photoUrl: null,
+            initialMembers: Array.from(selectedGroupMembers)
+        });
+        
+        newGroupModal.classList.add('hidden');
+    });
+}
+
 // --- Poll Modal Events ---
 
 let pollOptionCount = 0;
@@ -1032,6 +1159,15 @@ function escapeHTML(str) {
 
 document.getElementById('btn-accept').addEventListener('click', async () => {
     if (!activeConversationId) return;
+    const conv = conversations.find(c => c._id === activeConversationId);
+    
+    if (conv && conv.type === 'group') {
+        socket.emit('group:approve_request', { groupId: conv.groupId, status: 'approved' });
+        conv.groupMemberStatus = 'approved';
+        selectConversation(activeConversationId, chatWithName.textContent);
+        return;
+    }
+
     try {
         const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/accept`, {
             method: 'POST',
@@ -1040,7 +1176,6 @@ document.getElementById('btn-accept').addEventListener('click', async () => {
         const data = await response.json();
         if (response.ok) {
             // Update the status of the conversation locally
-            const conv = conversations.find(c => c._id === activeConversationId);
             if (conv) conv.status = 'accepted';
             
             // Re-trigger selectConversation to refresh input state and fetch messages

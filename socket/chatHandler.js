@@ -1,6 +1,8 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const GroupUser = require('../models/GroupUser');
+const Group = require('../models/Group');
+const GroupMember = require('../models/GroupMember');
 const UserToken = require('../models/UserToken');
 const { addSocket, removeSocket, getSockets } = require('./socketManager');
 const { sendChatNotification } = require('../services/chatNotificationService');
@@ -28,13 +30,10 @@ function chatHandler(io) {
                 socket.join(`conv:${convId}`);
                 console.log(`User ${username} joined community room conv:${convId}`);
             } else if (conversation.type === 'group') {
-                const membership = await GroupUser.findOne({
-                    where: {
-                        group_id: conversation.groupId,
-                        user_id: userId,
-                        status: 1,
-                        is_active: 1
-                    }
+                const membership = await GroupMember.findOne({
+                    groupId: conversation.groupId,
+                    userId: userId,
+                    status: 'approved'
                 });
 
                 if (membership) {
@@ -82,13 +81,10 @@ function chatHandler(io) {
                 return socket.emit('message:error', { error: 'You are not a member of this community.' });
             }
         } else if (conversation.type === 'group') {
-            const membership = await GroupUser.findOne({
-                where: {
-                    group_id: conversation.groupId,
-                    user_id: userId,
-                    status: 1,
-                    is_active: 1
-                }
+            const membership = await GroupMember.findOne({
+                groupId: conversation.groupId,
+                userId: userId,
+                status: 'approved'
             });
 
             if (!membership) {
@@ -160,15 +156,12 @@ function chatHandler(io) {
             let recipientUserIds = [];
 
             if (conversation.type === 'group') {
-                const members = await GroupUser.findAll({
-                    where: {
-                        group_id: conversation.groupId,
-                        status: 1,
-                        is_active: 1
-                    }
+                const members = await GroupMember.find({
+                    groupId: conversation.groupId,
+                    status: 'approved'
                 });
                 recipientUserIds = members
-                    .map((member) => member.user_id)
+                    .map((member) => member.userId)
                     .filter((id) => id !== userId);
             } else {
                 for (const participant of conversation.participants) {
@@ -183,7 +176,14 @@ function chatHandler(io) {
             const now = new Date();
             const mutedUserIds = new Set();
             
-            if (conversation.participants && conversation.participants.length > 0) {
+            if (conversation.type === 'group') {
+                const members = await GroupMember.find({
+                    groupId: conversation.groupId,
+                    status: 'approved',
+                    muteUntil: { $gt: now }
+                });
+                members.forEach(m => mutedUserIds.add(m.userId));
+            } else if (conversation.participants && conversation.participants.length > 0) {
                 conversation.participants.forEach(p => {
                     if (p.muteUntil && p.muteUntil > now) {
                         mutedUserIds.add(p.userId);
@@ -470,10 +470,20 @@ function chatHandler(io) {
           default: return;
         }
 
-        await Conversation.updateOne(
-          { _id: conversationId, 'participants.userId': userId },
-          { $set: { 'participants.$.muteUntil': muteUntil } }
-        );
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) return;
+
+        if (conversation.type === 'group') {
+            await GroupMember.updateOne(
+                { groupId: conversation.groupId, userId },
+                { $set: { muteUntil } }
+            );
+        } else {
+            await Conversation.updateOne(
+                { _id: conversationId, 'participants.userId': userId },
+                { $set: { 'participants.$.muteUntil': muteUntil } }
+            );
+        }
 
         socket.emit('conversation:mute_updated', { conversationId, muteUntil });
       } catch (err) {
@@ -496,16 +506,174 @@ function chatHandler(io) {
         const { conversationId } = parsedData;
         if (!conversationId) return;
 
-        await Conversation.updateOne(
-          { _id: conversationId, 'participants.userId': userId },
-          { $set: { 'participants.$.muteUntil': null } }
-        );
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) return;
+
+        if (conversation.type === 'group') {
+            await GroupMember.updateOne(
+                { groupId: conversation.groupId, userId },
+                { $set: { muteUntil: null } }
+            );
+        } else {
+            await Conversation.updateOne(
+                { _id: conversationId, 'participants.userId': userId },
+                { $set: { 'participants.$.muteUntil': null } }
+            );
+        }
 
         socket.emit('conversation:mute_updated', { conversationId, muteUntil: null });
       } catch (err) {
         console.error('Unmute error:', err);
         socket.emit('message:error', { error: 'Failed to unmute conversation' });
       }
+    });
+
+    // Group Chat Socket Events
+    socket.on('group:create', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { name, description, photoUrl, initialMembers } = parsedData;
+            
+            if (!name) return socket.emit('group:error', { error: 'Group name is required' });
+
+            const conversation = new Conversation({ type: 'group', groupName: name, participants: [] });
+            await conversation.save();
+
+            const group = new Group({
+                name,
+                description,
+                photoUrl,
+                createdBy: userId,
+                conversationId: conversation._id
+            });
+            await group.save();
+
+            conversation.groupId = group._id;
+            await conversation.save();
+
+            const members = [{
+                groupId: group._id,
+                userId: userId,
+                role: 'admin',
+                status: 'approved'
+            }];
+
+            if (Array.isArray(initialMembers)) {
+                initialMembers.forEach(id => {
+                    if (id !== userId) {
+                        members.push({
+                            groupId: group._id,
+                            userId: id,
+                            role: 'member',
+                            status: 'pending'
+                        });
+                    }
+                });
+            }
+
+            await GroupMember.insertMany(members);
+
+            socket.join(`conv:${conversation._id}`);
+            socket.emit('group:created', { group, conversationId: conversation._id });
+
+            // Notify invited members
+            members.forEach(m => {
+                if (m.status === 'pending') {
+                    const sockets = getSockets(m.userId);
+                    if (sockets) sockets.forEach(sid => io.to(sid).emit('group:invitation_received', { group }));
+                }
+            });
+        } catch (err) {
+            console.error('Group create error:', err);
+            socket.emit('group:error', { error: 'Failed to create group' });
+        }
+    });
+
+    socket.on('group:approve_request', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, status } = parsedData; // 'approved' or 'rejected'
+
+            if (!['approved', 'rejected'].includes(status)) return;
+
+            const membership = await GroupMember.findOneAndUpdate(
+                { groupId, userId, status: 'pending' },
+                { status },
+                { new: true }
+            );
+
+            if (!membership) return socket.emit('group:error', { error: 'Invitation not found' });
+
+            if (status === 'approved') {
+                const group = await Group.findById(groupId);
+                if (group) {
+                    socket.join(`conv:${group.conversationId}`);
+                    io.to(`conv:${group.conversationId}`).emit('group:member_joined', { groupId, userId, username });
+                }
+            }
+        } catch (err) {
+            console.error('Group approve error:', err);
+        }
+    });
+
+    socket.on('group:admin_add_members', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, userIds } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can add members' });
+
+            const group = await Group.findById(groupId);
+            if (!group) return;
+
+            if (Array.isArray(userIds)) {
+                const members = userIds.map(id => ({
+                    groupId,
+                    userId: id,
+                    role: 'member',
+                    status: 'pending'
+                }));
+                
+                // Use insertMany with ordered: false to ignore duplicates
+                try {
+                    await GroupMember.insertMany(members, { ordered: false });
+                } catch (e) {
+                    // Ignore duplicate key errors
+                }
+
+                userIds.forEach(id => {
+                    const sockets = getSockets(id);
+                    if (sockets) sockets.forEach(sid => io.to(sid).emit('group:invitation_received', { group }));
+                });
+            }
+        } catch (err) {
+            console.error('Group add members error:', err);
+        }
+    });
+
+    socket.on('group:admin_remove_member', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, targetUserId } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can remove members' });
+
+            await GroupMember.deleteOne({ groupId, userId: targetUserId });
+            
+            const group = await Group.findById(groupId);
+            if (group) {
+                io.to(`conv:${group.conversationId}`).emit('group:member_removed', { groupId, userId: targetUserId });
+                
+                const sockets = getSockets(targetUserId);
+                if (sockets) sockets.forEach(sid => {
+                    io.sockets.sockets.get(sid)?.leave(`conv:${group.conversationId}`);
+                });
+            }
+        } catch (err) {
+            console.error('Group remove member error:', err);
+        }
     });
 
     socket.on('disconnect', () => {
