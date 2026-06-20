@@ -4,10 +4,11 @@ const groupMemberSchema = new mongoose.Schema({
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', required: true },
   userId: { type: Number, required: true },
   role: { type: String, enum: ['admin', 'member'], default: 'member' },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'blocked'], default: 'pending' },
   muteUntil: { type: Date, default: null },
   lastReadMessageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
-  joinedAt: { type: Date, default: Date.now }
+  joinedAt: { type: Date, default: Date.now },
+  blockedAt: { type: Date, default: null }
 });
 
 // Indexes for lightning fast lookups inside the socket

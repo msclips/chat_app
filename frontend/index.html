@@ -77,7 +77,7 @@
 
                 <div id="active-chat" class="chat-container hidden">
                     <header class="chat-header">
-                        <div class="chat-title">
+                        <div class="chat-title" id="chat-title-header" style="cursor: pointer; padding: 4px; border-radius: 6px; transition: background 0.2s;">
                             <div class="avatar" id="chat-avatar">?</div>
                             <div>
                                 <h3 id="chat-with-name">Recipient Name</h3>
@@ -153,6 +153,97 @@
                     </footer>
                 </div>
             </main>
+        </div>
+
+        <!-- Group Info Modal -->
+        <div id="group-info-modal" class="modal hidden">
+            <div class="modal-content" style="max-width: 400px; max-height: 90vh; display: flex; flex-direction: column;">
+                <header class="modal-header">
+                    <h3>Group Info</h3>
+                    <button id="close-group-info-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body" style="padding: 0; overflow-y: auto;">
+                    <div style="padding: 24px; text-align: center; border-bottom: 1px solid var(--border-color);">
+                        <div class="avatar" id="group-info-avatar" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 16px;">G</div>
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <input type="text" id="group-info-name" style="font-size: 20px; font-weight: 600; text-align: center; border: 1px solid transparent; background: transparent; color: var(--text-color); width: 80%; padding: 4px; border-radius: 4px;" />
+                            <i class="ph ph-pencil-simple" id="edit-group-name-btn" style="cursor: pointer; color: var(--text-muted);"></i>
+                        </div>
+                        <div style="color: #06b6d4; font-size: 13px; font-weight: 500; margin-top: 8px; background: rgba(6, 182, 212, 0.1); display: inline-block; padding: 4px 12px; border-radius: 12px;">
+                            <i class="ph ph-users"></i> <span id="group-info-count">0 participants</span>
+                        </div>
+                    </div>
+
+                    <div style="padding: 16px 24px;">
+                        <div style="margin-bottom: 24px;">
+                            <h4 style="color: #06b6d4; font-size: 13px; margin-bottom: 12px;">Group Admins</h4>
+                            <div id="group-admins-list" class="users-list" style="padding: 0;">
+                                <!-- Admins -->
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 style="color: #06b6d4; font-size: 13px; margin-bottom: 12px;">Participants</h4>
+                            <div class="search-bar" style="margin-bottom: 12px; background: var(--bg-hover);">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="group-info-search" placeholder="Search..." style="background: transparent;">
+                            </div>
+                            <div id="group-participants-list" class="users-list" style="padding: 0;">
+                                <!-- Participants -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 12px;">
+                        <button id="add-participant-btn" class="btn" style="width: 100%; justify-content: center; background: rgba(59, 130, 246, 0.1); color: var(--primary-light);">
+                            <i class="ph ph-user-plus"></i> Add New Participant
+                        </button>
+                        <button id="exit-group-btn" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ef4444; color: #ef4444; background: rgba(239, 68, 68, 0.05); font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;">
+                            <i class="ph ph-sign-out"></i> Exit Group
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Participant Modal -->
+        <div id="add-participant-modal" class="modal hidden" style="z-index: 1001;">
+            <div class="modal-content">
+                <header class="modal-header">
+                    <h3>Add Participants</h3>
+                    <button id="close-add-participant-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body">
+                    <div class="search-bar" style="margin-bottom: 10px;">
+                        <i class="ph ph-magnifying-glass"></i>
+                        <input type="text" id="add-participant-search" placeholder="Search users...">
+                    </div>
+                    <div id="add-participant-list" class="users-list" style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;">
+                    </div>
+                    <button id="submit-add-participants-btn" class="btn" style="width: 100%; justify-content: center;">Add Selected</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Member Action Modal -->
+        <div id="member-action-modal" class="modal hidden" style="z-index: 1002;">
+            <div class="modal-content" style="max-width: 320px;">
+                <header class="modal-header">
+                    <h3 id="member-action-name">Manage Member</h3>
+                    <button id="close-member-action-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body" style="display: flex; flex-direction: column; gap: 8px;">
+                    <button id="action-make-admin" class="btn" style="width: 100%; justify-content: flex-start; background: var(--bg-hover); color: var(--text-color); border: 1px solid var(--border-color);">
+                        <i class="ph ph-star"></i> Make Group Admin
+                    </button>
+                    <button id="action-block-member" class="btn" style="width: 100%; justify-content: flex-start; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444;">
+                        <i class="ph ph-prohibit"></i> Block from Group
+                    </button>
+                    <button id="action-remove-member" class="btn" style="width: 100%; justify-content: flex-start; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444;">
+                        <i class="ph ph-trash"></i> Remove from Group
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- Mute Duration Modal -->

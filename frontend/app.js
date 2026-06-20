@@ -1251,5 +1251,352 @@ document.getElementById('btn-reject').addEventListener('click', async () => {
     }
 });
 
+// --- Group Info Modal Logic ---
+const groupInfoModal = document.getElementById('group-info-modal');
+const closeGroupInfoModal = document.getElementById('close-group-info-modal');
+const chatTitleHeader = document.getElementById('chat-title-header');
+const groupInfoAvatar = document.getElementById('group-info-avatar');
+const groupInfoName = document.getElementById('group-info-name');
+const groupInfoCount = document.getElementById('group-info-count');
+const groupAdminsList = document.getElementById('group-admins-list');
+const groupParticipantsList = document.getElementById('group-participants-list');
+const editGroupNameBtn = document.getElementById('edit-group-name-btn');
+const exitGroupBtn = document.getElementById('exit-group-btn');
+const addParticipantBtn = document.getElementById('add-participant-btn');
+const groupInfoSearch = document.getElementById('group-info-search');
+
+const addParticipantModal2 = document.getElementById('add-participant-modal');
+const closeAddParticipantModal2 = document.getElementById('close-add-participant-modal');
+const addParticipantSearch2 = document.getElementById('add-participant-search');
+const addParticipantList2 = document.getElementById('add-participant-list');
+const submitAddParticipantsBtn2 = document.getElementById('submit-add-participants-btn');
+
+let currentGroupInfo = null;
+let currentGroupMembers = [];
+
+if (chatTitleHeader) {
+    chatTitleHeader.addEventListener('click', async () => {
+        if (!activeConversationId) return;
+        
+        const conv = conversations.find(c => c._id === activeConversationId);
+        if (!conv || (conv.type !== 'group' && conv.type !== 'community')) return;
+
+        try {
+            const res = await fetch(`${API_URL}/api/conversations/${activeConversationId}/groupInfo`, {
+                headers: getHeaders()
+            });
+            const data = await res.json();
+            
+            if (res.ok) {
+                currentGroupInfo = data.group;
+                currentGroupMembers = data.members;
+                
+                if (groupInfoName) groupInfoName.value = data.group.name;
+                if (groupInfoAvatar) groupInfoAvatar.textContent = data.group.name.charAt(0).toUpperCase();
+                if (groupInfoCount) groupInfoCount.textContent = `${data.members.length} participants`;
+                
+                const myMembership = data.members.find(m => m.userId == currentUser.id);
+                const isAdmin = myMembership && myMembership.role === 'admin';
+                
+                if (groupInfoName) groupInfoName.disabled = !isAdmin;
+                if (editGroupNameBtn) editGroupNameBtn.style.display = isAdmin ? 'block' : 'none';
+                if (addParticipantBtn) addParticipantBtn.style.display = isAdmin ? 'flex' : 'none';
+                
+                if (data.group.isCommunity) {
+                    if (editGroupNameBtn) editGroupNameBtn.style.display = 'none';
+                    if (addParticipantBtn) addParticipantBtn.style.display = 'none';
+                }
+                
+                renderGroupInfoMembers();
+                if (groupInfoModal) groupInfoModal.classList.remove('hidden');
+            } else {
+                alert(data.message || 'Error loading group info');
+            }
+        } catch (err) {
+            console.error('Error fetching group info', err);
+        }
+    });
+}
+
+function renderGroupInfoMembers(filter = '') {
+    if (!groupAdminsList || !groupParticipantsList) return;
+    groupAdminsList.innerHTML = '';
+    groupParticipantsList.innerHTML = '';
+    
+    const filteredMembers = currentGroupMembers.filter(m => m.username.toLowerCase().includes(filter.toLowerCase()));
+    
+    filteredMembers.forEach(member => {
+        const div = document.createElement('div');
+        div.className = 'user-item';
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        
+        let roleBadge = '';
+        if (member.role === 'admin') {
+            roleBadge = '<span style="font-size: 10px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; padding: 2px 6px; border-radius: 4px; font-weight: 600;">Admin</span>';
+        } else if (member.role === 'member') {
+            roleBadge = '<span style="font-size: 10px; background: rgba(107, 114, 128, 0.1); color: var(--text-muted); padding: 2px 6px; border-radius: 4px;">User</span>';
+        }
+        
+        let removeBtn = '';
+        const myMembership = currentGroupMembers.find(m => m.userId == currentUser.id);
+        const isAdmin = myMembership && myMembership.role === 'admin';
+        
+        div.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                <div class="avatar">${member.username.charAt(0).toUpperCase()}</div>
+                <div style="flex: 1; display:flex; align-items:center; justify-content:space-between;">
+                    <div class="user-name" style="display:flex; align-items:center; gap:8px;">
+                        ${member.username} ${member.userId == currentUser.id ? '(You)' : ''}
+                        ${roleBadge}
+                        ${member.status === 'blocked' ? '<span style="font-size: 10px; background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 2px 6px; border-radius: 4px;">Blocked</span>' : ''}
+                    </div>
+                    ${isAdmin && member.userId != currentUser.id && !currentGroupInfo.isCommunity ? '<i class="ph ph-dots-three-vertical" style="color:var(--text-muted);"></i>' : ''}
+                </div>
+            </div>
+        `;
+        
+        if (isAdmin && member.userId != currentUser.id && !currentGroupInfo.isCommunity) {
+             div.style.cursor = 'pointer';
+             div.addEventListener('click', () => {
+                 if (typeof openMemberActionModal === 'function') {
+                     openMemberActionModal(member);
+                 }
+             });
+        }
+        
+        if (member.role === 'admin') {
+            groupAdminsList.appendChild(div);
+        } else {
+            groupParticipantsList.appendChild(div);
+        }
+    });
+}
+
+if (groupInfoSearch) {
+    groupInfoSearch.addEventListener('input', (e) => {
+        renderGroupInfoMembers(e.target.value);
+    });
+}
+
+if (closeGroupInfoModal) {
+    closeGroupInfoModal.addEventListener('click', () => {
+        groupInfoModal.classList.add('hidden');
+    });
+}
+
+if (editGroupNameBtn) {
+    editGroupNameBtn.addEventListener('click', () => {
+        if (groupInfoName) groupInfoName.focus();
+    });
+}
+
+if (groupInfoName) {
+    groupInfoName.addEventListener('blur', () => {
+        if (!currentGroupInfo || currentGroupInfo.isCommunity) return;
+        const newName = groupInfoName.value.trim();
+        if (newName && newName !== currentGroupInfo.name) {
+            if (socket) socket.emit('group:edit', { groupId: currentGroupInfo.groupId, name: newName });
+            currentGroupInfo.name = newName;
+            if (chatWithName) chatWithName.textContent = newName;
+            const conv = conversations.find(c => c._id === activeConversationId);
+            if (conv) conv.groupName = newName;
+            renderConversations();
+        }
+    });
+}
+
+if (exitGroupBtn) {
+    exitGroupBtn.addEventListener('click', () => {
+        if (!currentGroupInfo) return;
+        if (confirm('Are you sure you want to exit this group?')) {
+            if (currentGroupInfo.isCommunity) {
+                alert('Cannot exit community from here yet.');
+            } else {
+                if (socket) socket.emit('group:leave', { groupId: currentGroupInfo.groupId });
+            }
+            if (groupInfoModal) groupInfoModal.classList.add('hidden');
+            if (activeChat) activeChat.classList.add('hidden');
+            if (noChatSelected) noChatSelected.classList.remove('hidden');
+            activeConversationId = null;
+        }
+    });
+}
+
+// Add participants logic
+let groupAddCandidates2 = new Set();
+
+if (addParticipantBtn) {
+    addParticipantBtn.addEventListener('click', () => {
+        if (addParticipantModal2) addParticipantModal2.classList.remove('hidden');
+        if (addParticipantSearch2) addParticipantSearch2.value = '';
+        groupAddCandidates2.clear();
+        renderAddParticipantList2();
+    });
+}
+
+if (closeAddParticipantModal2) {
+    closeAddParticipantModal2.addEventListener('click', () => {
+        if (addParticipantModal2) addParticipantModal2.classList.add('hidden');
+    });
+}
+
+function renderAddParticipantList2(filter = '') {
+    if (!addParticipantList2) return;
+    addParticipantList2.innerHTML = '';
+    const filteredUsers = allUsers.filter(u => 
+        u.id != currentUser.id && 
+        u.user_name.toLowerCase().includes(filter.toLowerCase()) &&
+        !currentGroupMembers.some(m => m.userId == u.id)
+    );
+
+    if (filteredUsers.length === 0) {
+        addParticipantList2.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">No users found</p>';
+        return;
+    }
+
+    filteredUsers.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'user-item';
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        
+        const isSelected = groupAddCandidates2.has(user.id);
+        
+        div.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="avatar">${user.user_name.charAt(0).toUpperCase()}</div>
+                <div class="user-name">${user.user_name}</div>
+            </div>
+            <input type="checkbox" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
+        `;
+        
+        div.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'INPUT') {
+                const cb = div.querySelector('input');
+                cb.checked = !cb.checked;
+            }
+            if (div.querySelector('input').checked) {
+                groupAddCandidates2.add(user.id);
+            } else {
+                groupAddCandidates2.delete(user.id);
+            }
+        });
+        
+        addParticipantList2.appendChild(div);
+    });
+}
+
+if (addParticipantSearch2) {
+    addParticipantSearch2.addEventListener('input', (e) => {
+        renderAddParticipantList2(e.target.value);
+    });
+}
+
+if (submitAddParticipantsBtn2) {
+    submitAddParticipantsBtn2.addEventListener('click', () => {
+        if (groupAddCandidates2.size > 0 && currentGroupInfo) {
+            if (socket) {
+                socket.emit('group:admin_add_members', {
+                    groupId: currentGroupInfo.groupId,
+                    userIds: Array.from(groupAddCandidates2)
+                });
+            }
+            if (addParticipantModal2) addParticipantModal2.classList.add('hidden');
+            if (groupInfoModal) groupInfoModal.classList.add('hidden');
+            alert('Invitations sent to added members.');
+        }
+    });
+}
+
+if (typeof socket !== 'undefined' && socket) {
+    socket.on('group:updated', (data) => {
+        if (currentGroupInfo && currentGroupInfo.groupId === data.groupId) {
+            currentGroupInfo.name = data.name;
+            if (groupInfoName) groupInfoName.value = data.name;
+            if (groupInfoAvatar) groupInfoAvatar.textContent = data.name.charAt(0).toUpperCase();
+            if (chatWithName) chatWithName.textContent = data.name;
+            const conv = conversations.find(c => c._id === activeConversationId);
+            if (conv) conv.groupName = data.name;
+            renderConversations();
+        }
+    });
+
+    socket.on('group:member_updated', () => {
+        if (activeConversationId) {
+            // Re-fetch info silently
+            fetch(`${API_URL}/api/conversations/${activeConversationId}/groupInfo`, { headers: getHeaders() })
+                .then(res => res.json())
+                .then(data => {
+                    if (currentGroupInfo) {
+                        currentGroupMembers = data.members;
+                        if (!groupInfoModal.classList.contains('hidden')) {
+                            renderGroupInfoMembers();
+                            if (groupInfoCount) groupInfoCount.textContent = `${data.members.length} participants`;
+                        }
+                    }
+                });
+        }
+    });
+}
+
+// Member Action Modal Logic
+const memberActionModal = document.getElementById('member-action-modal');
+const closeMemberActionModal = document.getElementById('close-member-action-modal');
+const memberActionName = document.getElementById('member-action-name');
+const actionMakeAdmin = document.getElementById('action-make-admin');
+const actionBlockMember = document.getElementById('action-block-member');
+const actionRemoveMember = document.getElementById('action-remove-member');
+let currentActionMember = null;
+
+function openMemberActionModal(member) {
+    currentActionMember = member;
+    if (memberActionName) memberActionName.textContent = `Manage ${member.username}`;
+    
+    if (actionMakeAdmin) actionMakeAdmin.style.display = member.role === 'admin' ? 'none' : 'flex';
+    if (actionBlockMember) actionBlockMember.style.display = member.status === 'blocked' ? 'none' : 'flex';
+
+    if (memberActionModal) memberActionModal.classList.remove('hidden');
+}
+
+if (closeMemberActionModal) {
+    closeMemberActionModal.addEventListener('click', () => {
+        memberActionModal.classList.add('hidden');
+    });
+}
+
+if (actionMakeAdmin) {
+    actionMakeAdmin.addEventListener('click', () => {
+        if (currentActionMember && currentGroupInfo) {
+            if (socket) socket.emit('group:admin_make_admin', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
+            memberActionModal.classList.add('hidden');
+        }
+    });
+}
+
+if (actionBlockMember) {
+    actionBlockMember.addEventListener('click', () => {
+        if (currentActionMember && currentGroupInfo) {
+            if(confirm(`Block ${currentActionMember.username} from the group?`)) {
+                if (socket) socket.emit('group:admin_block_member', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
+                memberActionModal.classList.add('hidden');
+            }
+        }
+    });
+}
+
+if (actionRemoveMember) {
+    actionRemoveMember.addEventListener('click', () => {
+        if (currentActionMember && currentGroupInfo) {
+            if(confirm(`Remove ${currentActionMember.username} from the group?`)) {
+                if (socket) socket.emit('group:admin_remove_member', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
+                memberActionModal.classList.add('hidden');
+            }
+        }
+    });
+}
+
 // Trigger initial app startup
 initApp();

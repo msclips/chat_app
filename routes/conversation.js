@@ -87,7 +87,7 @@ router.get('/', async (req, res) => {
 
     const groupMemberships = await GroupMember.find({
       userId: currentUser.id,
-      status: { $in: ['approved', 'pending'] } // include pending to be safe, or just 'approved'
+      status: { $in: ['approved', 'pending', 'blocked'] }
     });
     const mongoGroupIds = groupMemberships.map((m) => m.groupId);
 
@@ -150,11 +150,20 @@ router.get('/:id/messages', async (req, res) => {
       }
     }
 
-    const messages = await Message.find({ 
+    let messageQuery = {
       conversationId: req.params.id,
       delete_type: { $ne: 2 },
       deleted_by: { $ne: currentUser.id }
-    })
+    };
+
+    if (conversation.type === 'group' && conversation.groupId) {
+      const membership = await GroupMember.findOne({ groupId: conversation.groupId, userId: currentUser.id });
+      if (membership && membership.status === 'blocked' && membership.blockedAt) {
+        messageQuery.createdAt = { $lt: membership.blockedAt };
+      }
+    }
+
+    const messages = await Message.find(messageQuery)
       .populate('replyTo', 'senderName content')
       .sort({ createdAt: 1 }) // Oldest first for chat history
       .limit(50);
@@ -224,6 +233,71 @@ router.post('/:id/reject', async (req, res) => {
     res.json({ success: true, conversation });
   } catch (err) {
     console.error('Reject error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Get group info and members for a conversation
+router.get('/:id/groupInfo', async (req, res) => {
+  const currentUser = getRequestUser(req);
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+
+    let groupDetails = {};
+    let members = [];
+    
+    // Fetch all user details to map names
+    const allUsers = await User.findAll({ attributes: ['user_id', 'user_name'] });
+    const userMap = {};
+    allUsers.forEach(u => userMap[u.user_id] = u.user_name);
+
+    if (conversation.type === 'group') {
+      const Group = require('../models/Group');
+      const group = await Group.findById(conversation.groupId);
+      if (!group) return res.status(404).json({ message: 'Group not found' });
+      
+      groupDetails = {
+        name: group.name,
+        description: group.description,
+        groupId: group._id,
+        isCommunity: false
+      };
+
+      const memberships = await GroupMember.find({ groupId: group._id });
+      members = memberships.map(m => ({
+        userId: m.userId,
+        username: userMap[m.userId] || 'User ' + m.userId,
+        role: m.role,
+        status: m.status
+      }));
+
+    } else if (conversation.type === 'community') {
+      const GroupMaster = require('../models/GroupMaster');
+      const group = await GroupMaster.findByPk(conversation.communityId);
+      if (!group) return res.status(404).json({ message: 'Community not found' });
+      
+      groupDetails = {
+        name: group.group_name,
+        description: group.description,
+        groupId: group.group_id,
+        isCommunity: true
+      };
+
+      const memberships = await GroupUser.findAll({ where: { group_id: group.group_id, is_active: 1 } });
+      members = memberships.map(m => ({
+        userId: m.user_id,
+        username: userMap[m.user_id] || 'User ' + m.user_id,
+        role: m.role === 1 ? 'admin' : 'member',
+        status: m.status === 1 ? 'approved' : 'pending'
+      }));
+    } else {
+      return res.status(400).json({ message: 'Not a group conversation' });
+    }
+
+    res.json({ group: groupDetails, members });
+  } catch (err) {
+    console.error('Group Info error:', err);
     res.status(500).send('Server Error');
   }
 });

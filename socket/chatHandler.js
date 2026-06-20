@@ -676,6 +676,88 @@ function chatHandler(io) {
         }
     });
 
+    socket.on('group:admin_make_admin', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, targetUserId } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can make other members admin' });
+
+            await GroupMember.updateOne({ groupId, userId: targetUserId }, { $set: { role: 'admin' } });
+            
+            const group = await Group.findById(groupId);
+            if (group) {
+                io.to(`conv:${group.conversationId}`).emit('group:member_updated', { groupId, userId: targetUserId, role: 'admin' });
+            }
+        } catch (err) {
+            console.error('Group make admin error:', err);
+        }
+    });
+
+    socket.on('group:admin_block_member', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, targetUserId } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can block members' });
+
+            await GroupMember.updateOne(
+                { groupId, userId: targetUserId }, 
+                { status: 'blocked', blockedAt: new Date() }
+            );
+            
+            const group = await Group.findById(groupId);
+            if (group) {
+                io.to(`conv:${group.conversationId}`).emit('group:member_updated', { groupId, userId: targetUserId, status: 'blocked' });
+                
+                // Optionally remove from room so they don't get live new messages
+                const sockets = getSockets(targetUserId);
+                if (sockets) sockets.forEach(sid => {
+                    io.sockets.sockets.get(sid)?.leave(`conv:${group.conversationId}`);
+                });
+            }
+        } catch (err) {
+            console.error('Group block member error:', err);
+        }
+    });
+
+    socket.on('group:leave', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId } = parsedData;
+
+            await GroupMember.deleteOne({ groupId, userId });
+            
+            const group = await Group.findById(groupId);
+            if (group) {
+                io.to(`conv:${group.conversationId}`).emit('group:member_removed', { groupId, userId });
+                socket.leave(`conv:${group.conversationId}`);
+            }
+        } catch (err) {
+            console.error('Group leave error:', err);
+        }
+    });
+
+    socket.on('group:edit', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, name } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can edit group details' });
+
+            const group = await Group.findByIdAndUpdate(groupId, { name }, { new: true });
+            if (group) {
+                await Conversation.updateOne({ _id: group.conversationId }, { $set: { groupName: name } });
+                io.to(`conv:${group.conversationId}`).emit('group:updated', { groupId, name });
+            }
+        } catch (err) {
+            console.error('Group edit error:', err);
+        }
+    });
+
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${username}`);
       removeSocket(userId, socket.id);
