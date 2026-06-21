@@ -824,6 +824,49 @@ function chatHandler(io) {
         }
     });
 
+    // Mark all messages in a conversation as read for this user.
+    // Private: updates participants[].lastRead timestamp.
+    // Group:   updates GroupMember.lastReadMessageId to the latest message.
+    socket.on('messages:read', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { conversationId } = parsedData;
+            if (!conversationId) return;
+
+            const conversation = await Conversation.findById(conversationId);
+            if (!conversation) return;
+
+            if (conversation.type === 'private') {
+                await Conversation.updateOne(
+                    { _id: conversationId, 'participants.userId': userId },
+                    { $set: { 'participants.$.lastRead': new Date() } }
+                );
+                console.log(`✅ messages:read — private conv ${conversationId}, user ${userId}`);
+            } else if (conversation.type === 'group' && conversation.groupId) {
+                const latestMsg = await Message.findOne(
+                    { conversationId },
+                    { _id: 1 },
+                    { sort: { createdAt: -1 } }
+                ).lean();
+                if (latestMsg) {
+                    await GroupMember.updateOne(
+                        { groupId: conversation.groupId, userId },
+                        { $set: { lastReadMessageId: latestMsg._id } }
+                    );
+                    console.log(`✅ messages:read — group conv ${conversationId}, user ${userId}, lastMsg ${latestMsg._id}`);
+                }
+            } else if (conversation.type === 'community' && conversation.communityId) {
+                await GroupUser.update(
+                    { last_seen_at: new Date() },
+                    { where: { group_id: conversation.communityId, user_id: userId } }
+                );
+                console.log(`✅ messages:read — community conv ${conversationId}, user ${userId}`);
+            }
+        } catch (err) {
+            console.error('messages:read error:', err);
+        }
+    });
+
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${username}`);
       removeSocket(userId, socket.id);

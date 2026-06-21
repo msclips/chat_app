@@ -198,27 +198,33 @@ router.get('/', async (req, res) => {
     }
     // ── End enrichment ───────────────────────────────────────────────────────
 
-    // ── Calculate unread counts for private conversations ────────────────────
-    for (const conv of conversations) {
+    // ── Calculate unread counts for private & community conversations ──────────
+    const privateOrCommunityConvs = conversations.filter(c => c.type === 'private' || c.type === 'community');
+    await Promise.all(privateOrCommunityConvs.map(async (conv) => {
+      const unreadQuery = {
+        conversationId: conv._id,
+        senderId: { $ne: currentUser.id },   // exclude own messages
+        delete_type: { $ne: 2 },
+        deleted_by: { $ne: currentUser.id }
+      };
+
       if (conv.type === 'private') {
         const myParticipant = conv.participants?.find(p => p.userId === currentUser.id);
-        
-        let unreadQuery = {
-          conversationId: conv._id,
-          delete_type: { $ne: 2 },
-          deleted_by: { $ne: currentUser.id }
-        };
-
-        if (myParticipant && myParticipant.lastRead) {
+        if (myParticipant?.lastRead) {
           unreadQuery.createdAt = { $gt: myParticipant.lastRead };
         }
-
-        const unread = await Message.countDocuments(unreadQuery);
-        // Ensure unreadCounts object exists
-        if (!conv.unreadCounts) conv.unreadCounts = {};
-        conv.unreadCounts[currentUser.id.toString()] = unread;
+      } else if (conv.type === 'community') {
+        // Use communityMemberships fetched at the top of the route
+        const myMembership = communityMemberships.find(m => m.group_id === conv.communityId);
+        if (myMembership?.last_seen_at) {
+          unreadQuery.createdAt = { $gt: myMembership.last_seen_at };
+        }
       }
-    }
+
+      const unread = await Message.countDocuments(unreadQuery);
+      if (!conv.unreadCounts) conv.unreadCounts = {};
+      conv.unreadCounts[currentUser.id.toString()] = unread;
+    }));
     // ─────────────────────────────────────────────────────────────────────────
 
     res.json(conversations);
