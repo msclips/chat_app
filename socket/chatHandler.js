@@ -213,28 +213,32 @@ function chatHandler(io) {
                 console.log(`[NOTIFICATION] Starting push notification process for ${recipientUserIds.length} recipients`);
                 // Fetch actual tokens from MySQL for the recipients
                 const userTokensToNotify = [];
-                try {
-                    console.log(`[NOTIFICATION] Database Query Start: Fetching tokens for ${recipientUserIds.length} users`);
-                    const tokens = await UserToken.findAll({
-                        where: {
-                            user_id: recipientUserIds,
-                            is_active: true
-                        }
-                    });
-                    console.log(`[NOTIFICATION] Database Query Completed: Fetched tokens`);
-                    
-                    if (tokens && tokens.length > 0) {
-                        for (const tokenData of tokens) {
+                console.log(`[NOTIFICATION] Fetching tokens from MySQL Database Start`);
+                for (const id of recipientUserIds) {
+                    try {
+                        console.log(`[NOTIFICATION] Database Query Start: Fetching token for user ${id}`);
+                        const tokenData = await UserToken.findOne({
+                            where: {
+                                user_id: id,
+                                is_active: true
+                            }
+                        });
+                        console.log(`[NOTIFICATION] Database Query Completed: Fetching token for user ${id}`);
+                        
+                        if (tokenData) {
                             userTokensToNotify.push({
-                                user_id: tokenData.user_id,
+                                user_id: id,
                                 android_token: tokenData.android_token,
                                 web_token: tokenData.web_token
                             });
+                            console.log(`[NOTIFICATION] Token found for user ${id}`);
+                        } else {
+                            console.log(`[NOTIFICATION] No token document found for user ${id}`);
                         }
+                    } catch (dbErr) {
+                        console.error(`[NOTIFICATION] Error fetching token from MySQL for user ${id}:`, dbErr);
+                        console.error(`[NOTIFICATION] Complete Error Stack Trace:`, dbErr.stack);
                     }
-                } catch (dbErr) {
-                    console.error(`[NOTIFICATION] Error fetching tokens from MySQL:`, dbErr);
-                    console.error(`[NOTIFICATION] Complete Error Stack Trace:`, dbErr.stack);
                 }
                 console.log(`[NOTIFICATION] Fetching tokens from MySQL Database Completed. Found tokens for ${userTokensToNotify.length} users`);
 
@@ -688,6 +692,25 @@ function chatHandler(io) {
             }
         } catch (err) {
             console.error('Group make admin error:', err);
+        }
+    });
+
+    socket.on('group:admin_remove_admin', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, targetUserId } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can remove admin status' });
+
+            await GroupMember.updateOne({ groupId, userId: targetUserId }, { $set: { role: 'member' } });
+
+            const group = await Group.findById(groupId);
+            if (group) {
+                io.to(`conv:${group.conversationId}`).emit('group:member_updated', { groupId, userId: targetUserId, role: 'member' });
+            }
+        } catch (err) {
+            console.error('Group remove admin error:', err);
         }
     });
 
