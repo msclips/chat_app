@@ -150,27 +150,37 @@ function chatHandler(io) {
         socket.to(`conv:${conversationId}`).emit('message:new', messageData);
         console.log(`[MESSAGE] Message broadcasted to room`);
 
-        // Notify participants who might be online but not in the room (only for private/group)
-        if (conversation.type !== 'community') {
-            console.log(`[MESSAGE] Notifying participants who might be online but not in the room`)
-            let recipientUserIds = [];
+        // Notify participants who might be online but not in the room
+        console.log(`[MESSAGE] Notifying participants who might be online but not in the room`);
+        let recipientUserIds = [];
 
-            if (conversation.type === 'group') {
-                const members = await GroupMember.find({
-                    groupId: conversation.groupId,
-                    status: 'approved'
-                });
-                recipientUserIds = members
-                    .map((member) => member.userId)
-                    .filter((id) => id !== userId);
-            } else {
-                for (const participant of conversation.participants) {
-                    if (participant.userId !== userId) {
-                        recipientUserIds.push(participant.userId);
-                    }
+        if (conversation.type === 'group') {
+            const members = await GroupMember.find({
+                groupId: conversation.groupId,
+                status: 'approved'
+            });
+            recipientUserIds = members
+                .map((member) => member.userId)
+                .filter((id) => id !== userId);
+        } else if (conversation.type === 'community') {
+            const communityMemberships = await GroupUser.findAll({
+                where: {
+                    group_id: conversation.communityId,
+                    status: 1,
+                    is_active: 1
+                }
+            });
+            recipientUserIds = communityMemberships
+                .map((m) => m.user_id)
+                .filter((id) => id !== userId);
+        } else {
+            for (const participant of conversation.participants) {
+                if (participant.userId !== userId) {
+                    recipientUserIds.push(participant.userId);
                 }
             }
-            console.log(`[MESSAGE] Recipient user ids before mute filter:`, recipientUserIds);
+        }
+        console.log(`[MESSAGE] Recipient user ids before mute filter:`, recipientUserIds);
 
             // Filter out muted users from notification recipients
             const now = new Date();
@@ -299,8 +309,7 @@ function chatHandler(io) {
                 console.error('[NOTIFICATION] Complete Error Stack Trace:', notifyErr.stack);
               }
             }
-        }
-
+        
       } catch (err) {
         console.error('Message send error:', err);
         socket.emit('message:error', { error: 'Failed to send message' });
