@@ -297,6 +297,8 @@ function chatHandler(io) {
                   senderName: username,
                   chatData: {
                     chat_id: conversationId,
+                    chat_type: conversation.type,
+                    group_id: conversation.groupId ? conversation.groupId.toString() : (conversation.communityId ? conversation.communityId.toString() : ''),
                     message_id: message._id.toString(),
                     sender_id: userId,
                     message_content: message.content,
