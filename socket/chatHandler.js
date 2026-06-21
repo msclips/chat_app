@@ -814,7 +814,7 @@ function chatHandler(io) {
             const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
             if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can edit group details' });
 
-            const group = await Group.findByIdAndUpdate(groupId, { name }, { new: true });
+            const group = await Group.findByIdAndUpdate(groupId, { name }, { returnDocument: 'after' });
             if (group) {
                 await Conversation.updateOne({ _id: group.conversationId }, { $set: { groupName: name } });
                 io.to(`conv:${group.conversationId}`).emit('group:updated', { groupId, name, conversationId: group.conversationId });
@@ -836,6 +836,52 @@ function chatHandler(io) {
             }
         } catch (err) {
             console.error('Group edit error:', err);
+        }
+    });
+
+    socket.on('group:editImage', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, base64Image } = parsedData;
+             console.log('entery point 1');   
+            if (!base64Image || !base64Image.startsWith('data:image/')) {
+                return socket.emit('group:error', { error: 'Invalid image format. Must be a base64 string.' });
+            }
+ console.log('entery point 2');
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can update the group image' });
+ console.log('entery point 3');
+            const group = await Group.findByIdAndUpdate(groupId, { photoUrl: base64Image }, { returnDocument: 'after' });
+            if (group) {
+                await Conversation.updateOne({ _id: group.conversationId }, { $set: { photoUrl: base64Image } });
+                 console.log('entery point 4');
+                // Emit to the conversation room
+                io.to(`conv:${group.conversationId}`).emit('group:updated', { 
+                    groupId, 
+                    name: group.name, 
+                    photoUrl: base64Image, 
+                    conversationId: group.conversationId 
+                });
+                 console.log('entery point 5');
+                // Force a conversation update for all members so the chat list updates in real-time
+                const members = await GroupMember.find({ groupId: group._id, status: 'approved' });
+                for (const member of members) {
+                    const sockets = getSockets(member.userId);
+                    if (sockets) {
+                        for (const sid of sockets) {
+                            io.to(sid).emit('conversation:updated', {
+                                conversationId: group.conversationId,
+                                groupName: group.name,
+                                photoUrl: base64Image,
+                                incrementUnread: false
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Group editImage error:', err);
+            socket.emit('group:error', { error: 'Failed to update group image' });
         }
     });
 

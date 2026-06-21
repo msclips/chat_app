@@ -130,9 +130,13 @@ router.get('/', async (req, res) => {
       }).lean();
 
       // Batch fetch Group documents for createdBy
-      const groupDocs = await Group.find({ _id: { $in: allGroupIds } }).select('_id createdBy').lean();
+      const groupDocs = await Group.find({ _id: { $in: allGroupIds } }).select('_id createdBy photoUrl').lean();
       const groupCreatedByMap = {};
-      groupDocs.forEach(g => { groupCreatedByMap[g._id.toString()] = g.createdBy; });
+      const groupPhotoMap = {};
+      groupDocs.forEach(g => {
+        groupCreatedByMap[g._id.toString()] = g.createdBy;
+        groupPhotoMap[g._id.toString()] = g.photoUrl || null;
+      });
 
       // Collect all unique member userIds for username lookup
       const memberUserIds = [...new Set(allMembers.map(m => m.userId))];
@@ -174,6 +178,7 @@ router.get('/', async (req, res) => {
             .map(m => m.userId.toString());
 
           conv.createdBy = groupCreatedByMap[gId] ?? null;
+          conv.photoUrl = groupPhotoMap[gId] ?? null;
 
           // Unread count for the current user: messages after their lastReadMessageId
           const myMember = members.find(m => m.userId === currentUser.id);
@@ -363,6 +368,7 @@ router.get('/:id/groupInfo', async (req, res) => {
       groupDetails = {
         name: group.name,
         description: group.description,
+        photoUrl: group.photoUrl || null,
         groupId: group._id,
         isCommunity: false
       };
@@ -383,6 +389,7 @@ router.get('/:id/groupInfo', async (req, res) => {
       groupDetails = {
         name: group.group_name,
         description: group.description,
+        photoUrl: group.image_path || null,
         groupId: group.group_id,
         isCommunity: true
       };

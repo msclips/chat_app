@@ -19,7 +19,8 @@ const io = new Server(server, {
   cors: {
     origin: '*', // Adjust for production
     methods: ['GET', 'POST']
-  }
+  },
+  maxHttpBufferSize: 1e7 // 10 MB limit for base64 images
 });
 
 // Share io instance with express app

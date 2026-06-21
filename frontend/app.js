@@ -324,7 +324,7 @@ function initSocket() {
         }
     });
 
-    socket.on('conversation:updated', ({ conversationId, lastMessage, incrementUnread, groupName }) => {
+    socket.on('conversation:updated', ({ conversationId, lastMessage, incrementUnread, groupName, photoUrl }) => {
         const conv = conversations.find(c => c._id === conversationId);
         if (conv) {
             if (lastMessage) {
@@ -336,6 +336,15 @@ function initSocket() {
                 conv.groupName = groupName;
                 if (activeConversationId === conversationId && chatWithName) {
                     chatWithName.textContent = groupName;
+                }
+            }
+            if (photoUrl) {
+                conv.photoUrl = photoUrl;
+                if (activeConversationId === conversationId) {
+                    const headerAvatar = document.getElementById('chat-avatar');
+                    if (headerAvatar) {
+                        headerAvatar.innerHTML = `<img src="${photoUrl}" alt="${conv.groupName || 'Group'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                    }
                 }
             }
             
@@ -372,6 +381,59 @@ function initSocket() {
 
     socket.on('connect_error', (err) => {
         console.error('Socket connection error:', err.message);
+    });
+
+    // Group info real-time listeners (MUST be inside initSocket so socket exists)
+    socket.on('group:updated', (data) => {
+        console.log('📸 group:updated received:', data.groupId, 'photoUrl?', !!data.photoUrl);
+        if (currentGroupInfo && currentGroupInfo.groupId === data.groupId) {
+            currentGroupInfo.name = data.name;
+            if (data.photoUrl) {
+                currentGroupInfo.photoUrl = data.photoUrl;
+                if (groupInfoAvatar) {
+                    groupInfoAvatar.innerHTML = `<img src="${data.photoUrl}" alt="${data.name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                }
+            }
+            if (groupInfoName) groupInfoName.value = data.name;
+            if (groupInfoAvatar && !data.photoUrl) groupInfoAvatar.textContent = data.name.charAt(0).toUpperCase();
+            if (chatWithName) chatWithName.textContent = data.name;
+        }
+        
+        // Find by groupId if it's there, or conversationId if provided
+        const conv = conversations.find(c => c.groupId === data.groupId || c._id === data.conversationId);
+        if (conv) {
+            conv.groupName = data.name;
+            if (data.photoUrl) {
+                conv.photoUrl = data.photoUrl;
+            }
+            if (activeConversationId === conv._id && chatWithName) {
+                chatWithName.textContent = data.name;
+                if (data.photoUrl) {
+                    const headerAvatar = document.getElementById('chat-avatar');
+                    if (headerAvatar) {
+                        headerAvatar.innerHTML = `<img src="${data.photoUrl}" alt="${data.name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                    }
+                }
+            }
+            renderConversations();
+        }
+    });
+
+    socket.on('group:member_updated', () => {
+        if (activeConversationId) {
+            // Re-fetch info silently
+            fetch(`${API_URL}/api/conversations/${activeConversationId}/groupInfo`, { headers: getHeaders() })
+                .then(res => res.json())
+                .then(data => {
+                    if (currentGroupInfo) {
+                        currentGroupMembers = data.members;
+                        if (!groupInfoModal.classList.contains('hidden')) {
+                            renderGroupInfoMembers();
+                            if (groupInfoCount) groupInfoCount.textContent = `${data.members.length} participants`;
+                        }
+                    }
+                });
+        }
     });
 }
 
@@ -476,8 +538,15 @@ function renderConversations() {
         const unreadCount = conv.unreadCounts ? (conv.unreadCounts[currentUser.id.toString()] || 0) : 0;
         const badgeHTML = unreadCount > 0 ? `<div style="background-color: #22c55e; color: white; font-size: 11px; font-weight: bold; border-radius: 50%; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0 6px;">${unreadCount}</div>` : '';
 
+        let avatarHTML = `<div class="avatar">${name.charAt(0).toUpperCase()}</div>`;
+        if (conv.photoUrl) {
+            avatarHTML = `<div class="avatar"><img src="${conv.photoUrl}" alt="${name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;"></div>`;
+        } else if (conv.type === 'community') {
+            avatarHTML = `<div class="avatar" style="background: linear-gradient(135deg, #f59e0b, #d97706)">${name.charAt(0).toUpperCase()}</div>`;
+        }
+
         div.innerHTML = `
-            <div class="avatar">${name.charAt(0).toUpperCase()}</div>
+            ${avatarHTML}
             <div class="conv-info">
                 <div class="conv-name-row">
                     <h4>${name}${pendingTag}${muteIcon}</h4>
@@ -653,13 +722,26 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     if (!isCommunity) activeCommunityId = null;
     
     chatWithName.textContent = name;
-    document.getElementById('chat-avatar').textContent = name.charAt(0).toUpperCase();
+    
+    // Look up the conversation to get photoUrl
+    const conv = conversations.find(c => c._id === id);
+    const chatAvatarEl = document.getElementById('chat-avatar');
+    
+    if (conv && conv.photoUrl) {
+        chatAvatarEl.innerHTML = `<img src="${conv.photoUrl}" alt="${name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        chatAvatarEl.style.background = '';
+    } else {
+        chatAvatarEl.innerHTML = name.charAt(0).toUpperCase();
+        if (isCommunity) {
+            chatAvatarEl.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+        } else {
+            chatAvatarEl.style.background = '';
+        }
+    }
     
     if (isCommunity) {
-        document.getElementById('chat-avatar').style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
         document.querySelector('.status-text').textContent = 'Public Community';
     } else {
-        document.getElementById('chat-avatar').style.background = '';
         document.querySelector('.status-text').textContent = 'Online';
     }
 
@@ -1341,8 +1423,17 @@ if (chatTitleHeader) {
                 currentGroupInfo = data.group;
                 currentGroupMembers = data.members;
                 
+                if (data.group.photoUrl) {
+                    if (groupInfoAvatar) {
+                        groupInfoAvatar.innerHTML = `<img src="${data.group.photoUrl}" alt="${data.group.name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                    }
+                } else {
+                    if (groupInfoAvatar) {
+                        groupInfoAvatar.innerHTML = data.group.name.charAt(0).toUpperCase();
+                    }
+                }
+                
                 if (groupInfoName) groupInfoName.value = data.group.name;
-                if (groupInfoAvatar) groupInfoAvatar.textContent = data.group.name.charAt(0).toUpperCase();
                 if (groupInfoCount) groupInfoCount.textContent = `${data.members.length} participants`;
                 
                 const myMembership = data.members.find(m => m.userId == currentUser.id);
@@ -1352,9 +1443,13 @@ if (chatTitleHeader) {
                 if (editGroupNameBtn) editGroupNameBtn.style.display = isAdmin ? 'block' : 'none';
                 if (addParticipantBtn) addParticipantBtn.style.display = isAdmin ? 'flex' : 'none';
                 
+                const editGroupImageBtn = document.getElementById('edit-group-image-btn');
+                if (editGroupImageBtn) editGroupImageBtn.style.display = isAdmin ? 'flex' : 'none';
+                
                 if (data.group.isCommunity) {
                     if (editGroupNameBtn) editGroupNameBtn.style.display = 'none';
                     if (addParticipantBtn) addParticipantBtn.style.display = 'none';
+                    if (editGroupImageBtn) editGroupImageBtn.style.display = 'none';
                 }
                 
                 renderGroupInfoMembers();
@@ -1495,6 +1590,50 @@ if (exitGroupBtn) {
     });
 }
 
+const groupImageUpload = document.getElementById('group-image-upload');
+if (groupImageUpload) {
+    groupImageUpload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size must be less than 5MB');
+            return;
+        }
+
+        if (groupInfoAvatar) {
+            groupInfoAvatar.innerHTML = '<i class="ph ph-spinner pulse" style="font-size: 24px; color: var(--primary-color);"></i>';
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64Image = event.target.result;
+            if (socket && currentGroupInfo) {
+                socket.emit('group:editImage', { 
+                    groupId: currentGroupInfo.groupId, 
+                    base64Image 
+                });
+            }
+        };
+        reader.onerror = () => {
+            alert('Failed to read image file');
+            if (groupInfoAvatar && currentGroupInfo) {
+                if (currentGroupInfo.photoUrl) {
+                    groupInfoAvatar.innerHTML = `<img src="${currentGroupInfo.photoUrl}" alt="${currentGroupInfo.name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                } else {
+                    groupInfoAvatar.textContent = currentGroupInfo.name.charAt(0).toUpperCase();
+                }
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 // Add participants logic
 let groupAddCandidates2 = new Set();
 
@@ -1582,43 +1721,7 @@ if (submitAddParticipantsBtn2) {
     });
 }
 
-if (typeof socket !== 'undefined' && socket) {
-    socket.on('group:updated', (data) => {
-        if (currentGroupInfo && currentGroupInfo.groupId === data.groupId) {
-            currentGroupInfo.name = data.name;
-            if (groupInfoName) groupInfoName.value = data.name;
-            if (groupInfoAvatar) groupInfoAvatar.textContent = data.name.charAt(0).toUpperCase();
-            if (chatWithName) chatWithName.textContent = data.name;
-        }
-        
-        // Find by groupId if it's there, or conversationId if provided
-        const conv = conversations.find(c => c.groupId === data.groupId || c._id === data.conversationId);
-        if (conv) {
-            conv.groupName = data.name;
-            if (activeConversationId === conv._id && chatWithName) {
-                chatWithName.textContent = data.name;
-            }
-            renderConversations();
-        }
-    });
-
-    socket.on('group:member_updated', () => {
-        if (activeConversationId) {
-            // Re-fetch info silently
-            fetch(`${API_URL}/api/conversations/${activeConversationId}/groupInfo`, { headers: getHeaders() })
-                .then(res => res.json())
-                .then(data => {
-                    if (currentGroupInfo) {
-                        currentGroupMembers = data.members;
-                        if (!groupInfoModal.classList.contains('hidden')) {
-                            renderGroupInfoMembers();
-                            if (groupInfoCount) groupInfoCount.textContent = `${data.members.length} participants`;
-                        }
-                    }
-                });
-        }
-    });
-}
+// group:updated and group:member_updated listeners are now registered inside initSocket()
 
 // Member Action Modal Logic
 const memberActionModal = document.getElementById('member-action-modal');
