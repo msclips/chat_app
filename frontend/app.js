@@ -324,30 +324,40 @@ function initSocket() {
         }
     });
 
-    socket.on('conversation:updated', ({ conversationId, lastMessage, incrementUnread }) => {
+    socket.on('conversation:updated', ({ conversationId, lastMessage, incrementUnread, groupName }) => {
         const conv = conversations.find(c => c._id === conversationId);
         if (conv) {
-            conv.lastMessage = lastMessage;
-            conv.updatedAt = lastMessage.createdAt || new Date();
+            if (lastMessage) {
+                conv.lastMessage = lastMessage;
+                conv.updatedAt = lastMessage.createdAt || new Date();
+                updateConversationPreview(lastMessage);
+            }
+            if (groupName) {
+                conv.groupName = groupName;
+                if (activeConversationId === conversationId && chatWithName) {
+                    chatWithName.textContent = groupName;
+                }
+            }
             
-            if (incrementUnread && activeConversationId !== conversationId) {
+            if (incrementUnread && activeConversationId !== conversationId && lastMessage) {
                 if (!conv.unreadCounts) conv.unreadCounts = {};
                 conv.unreadCounts[currentUser.id.toString()] = (conv.unreadCounts[currentUser.id.toString()] || 0) + 1;
-            } else if (activeConversationId === conversationId) {
+            } else if (activeConversationId === conversationId && lastMessage) {
                 // Instantly emit read receipt if we are looking at the chat
                 socket.emit('messages:read', { conversationId: conversationId, messageId: lastMessage._id });
             }
 
-            // Move to top
-            conversations = conversations.filter(c => c._id !== conversationId);
-            conversations.unshift(conv);
+            // Move to top ONLY if there is a new message
+            if (lastMessage) {
+                conversations = conversations.filter(c => c._id !== conversationId);
+                conversations.unshift(conv);
+            }
 
             renderConversations();
         } else {
             // New conversation, fetch it
             fetchConversations();
         }
-        updateConversationPreview(lastMessage);
     });
 
     socket.on('conversation:accepted', ({ conversationId }) => {
@@ -1426,26 +1436,47 @@ if (closeGroupInfoModal) {
     });
 }
 
+const editGroupNameModal = document.getElementById('edit-group-name-modal');
+const closeEditGroupNameModal = document.getElementById('close-edit-group-name-modal');
+const editGroupNameInput = document.getElementById('edit-group-name-input');
+const submitEditGroupNameBtn = document.getElementById('submit-edit-group-name-btn');
+
 if (editGroupNameBtn) {
     editGroupNameBtn.addEventListener('click', () => {
-        if (groupInfoName) groupInfoName.focus();
+        if (!currentGroupInfo || currentGroupInfo.isCommunity) return;
+        if (editGroupNameModal) {
+            editGroupNameModal.classList.remove('hidden');
+            editGroupNameInput.value = currentGroupInfo.name;
+            editGroupNameInput.focus();
+        }
     });
 }
 
-if (groupInfoName) {
-    groupInfoName.addEventListener('blur', () => {
+if (closeEditGroupNameModal) {
+    closeEditGroupNameModal.addEventListener('click', () => {
+        if (editGroupNameModal) editGroupNameModal.classList.add('hidden');
+    });
+}
+
+if (submitEditGroupNameBtn) {
+    submitEditGroupNameBtn.addEventListener('click', () => {
         if (!currentGroupInfo || currentGroupInfo.isCommunity) return;
-        const newName = groupInfoName.value.trim();
+        const newName = editGroupNameInput.value.trim();
         if (newName && newName !== currentGroupInfo.name) {
             if (socket) socket.emit('group:edit', { groupId: currentGroupInfo.groupId, name: newName });
+            
+            // Optimistic update
             currentGroupInfo.name = newName;
+            if (groupInfoName) groupInfoName.value = newName;
             if (chatWithName) chatWithName.textContent = newName;
             const conv = conversations.find(c => c._id === activeConversationId);
             if (conv) conv.groupName = newName;
             renderConversations();
         }
+        if (editGroupNameModal) editGroupNameModal.classList.add('hidden');
     });
 }
+
 
 if (exitGroupBtn) {
     exitGroupBtn.addEventListener('click', () => {
@@ -1558,8 +1589,15 @@ if (typeof socket !== 'undefined' && socket) {
             if (groupInfoName) groupInfoName.value = data.name;
             if (groupInfoAvatar) groupInfoAvatar.textContent = data.name.charAt(0).toUpperCase();
             if (chatWithName) chatWithName.textContent = data.name;
-            const conv = conversations.find(c => c._id === activeConversationId);
-            if (conv) conv.groupName = data.name;
+        }
+        
+        // Find by groupId if it's there, or conversationId if provided
+        const conv = conversations.find(c => c.groupId === data.groupId || c._id === data.conversationId);
+        if (conv) {
+            conv.groupName = data.name;
+            if (activeConversationId === conv._id && chatWithName) {
+                chatWithName.textContent = data.name;
+            }
             renderConversations();
         }
     });

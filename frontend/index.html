@@ -246,6 +246,20 @@
             </div>
         </div>
 
+        <!-- Edit Group Name Modal -->
+        <div id="edit-group-name-modal" class="modal hidden" style="z-index: 1003;">
+            <div class="modal-content" style="max-width: 320px;">
+                <header class="modal-header">
+                    <h3>Edit Group Name</h3>
+                    <button id="close-edit-group-name-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+                    <input type="text" id="edit-group-name-input" placeholder="Enter new group name" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-color); color: var(--text-color);">
+                    <button id="submit-edit-group-name-btn" class="btn" style="width: 100%; justify-content: center;">Save Name</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Mute Duration Modal -->
         <div id="mute-modal" class="modal hidden">
             <div class="modal-content" style="max-width: 340px;">

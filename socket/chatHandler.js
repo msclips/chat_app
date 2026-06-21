@@ -817,7 +817,22 @@ function chatHandler(io) {
             const group = await Group.findByIdAndUpdate(groupId, { name }, { new: true });
             if (group) {
                 await Conversation.updateOne({ _id: group.conversationId }, { $set: { groupName: name } });
-                io.to(`conv:${group.conversationId}`).emit('group:updated', { groupId, name });
+                io.to(`conv:${group.conversationId}`).emit('group:updated', { groupId, name, conversationId: group.conversationId });
+                
+                // Force a conversation update for all members so the chat list updates in real-time
+                const members = await GroupMember.find({ groupId: group._id, status: 'approved' });
+                for (const member of members) {
+                    const sockets = getSockets(member.userId);
+                    if (sockets) {
+                        for (const sid of sockets) {
+                            io.to(sid).emit('conversation:updated', {
+                                conversationId: group.conversationId,
+                                groupName: name,
+                                incrementUnread: false
+                            });
+                        }
+                    }
+                }
             }
         } catch (err) {
             console.error('Group edit error:', err);
