@@ -177,22 +177,23 @@ router.get('/', async (req, res) => {
 
           // Unread count for the current user: messages after their lastReadMessageId
           const myMember = members.find(m => m.userId === currentUser.id);
+          
+          let unreadQuery = {
+            conversationId: conv._id,
+            senderId: { $ne: currentUser.id }, // exclude own messages
+            delete_type: { $ne: 2 },
+            deleted_by: { $ne: currentUser.id }
+          };
+
           if (myMember && myMember.lastReadMessageId) {
             const lastReadMsg = await Message.findById(myMember.lastReadMessageId).select('createdAt').lean();
             if (lastReadMsg) {
-              const unread = await Message.countDocuments({
-                conversationId: conv._id,
-                createdAt: { $gt: lastReadMsg.createdAt },
-                delete_type: { $ne: 2 },
-                deleted_by: { $ne: currentUser.id }
-              });
-              conv.unreadCounts = { [currentUser.id.toString()]: unread };
-            } else {
-              conv.unreadCounts = { [currentUser.id.toString()]: 0 };
+              unreadQuery.createdAt = { $gt: lastReadMsg.createdAt };
             }
-          } else {
-            conv.unreadCounts = { [currentUser.id.toString()]: 0 };
           }
+
+          const unread = await Message.countDocuments(unreadQuery);
+          conv.unreadCounts = { [currentUser.id.toString()]: unread };
         }
       }
     }
