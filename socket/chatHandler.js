@@ -194,19 +194,57 @@ function chatHandler(io) {
             recipientUserIds = recipientUserIds.filter(id => !mutedUserIds.has(id));
             console.log(`[MESSAGE] Recipient user ids after mute filter:`, recipientUserIds);
 
-            for (const recipientId of recipientUserIds) {
-              const sockets = getSockets(recipientId);
-              if (sockets) {
-                for (const sid of sockets) {
-                  io.to(sid).emit('conversation:updated', {
-                    conversationId,
-                    lastMessage: messageData,
-                    incrementUnread: true
-                  });
+            // ── DIAGNOSTIC BLOCK ─────────────────────────────────────────────
+            console.log(`[DIAG] typeof recipientUserIds        :`, typeof recipientUserIds);
+            console.log(`[DIAG] Array.isArray(recipientUserIds):`, Array.isArray(recipientUserIds));
+            console.log(`[DIAG] recipientUserIds.length        :`, recipientUserIds.length);
+            console.log(`[DIAG] recipientUserIds constructor   :`, recipientUserIds?.constructor?.name);
+            // Check for Promise (would display as object in console but .length === undefined)
+            if (recipientUserIds instanceof Promise) {
+              console.error(`[DIAG] recipientUserIds is a Promise! Forgot await somewhere above.`);
+            }
+            // Check for Set / Map (iterable but no .length, only .size)
+            if (recipientUserIds instanceof Set || recipientUserIds instanceof Map) {
+              console.error(`[DIAG] recipientUserIds is a ${recipientUserIds.constructor.name} — use Array.from() to convert!`);
+            }
+            // Verify each element's type (ObjectId vs string matters for Set.has() lookups)
+            if (Array.isArray(recipientUserIds) && recipientUserIds.length > 0) {
+              console.log(`[DIAG] First element value :`, recipientUserIds[0]);
+              console.log(`[DIAG] First element type  :`, typeof recipientUserIds[0]);
+              console.log(`[DIAG] First element is ObjectId:`, recipientUserIds[0]?.constructor?.name);
+            }
+            // ── END DIAGNOSTIC BLOCK ──────────────────────────────────────────
+
+            // Isolate the socket-emit loop in its own try/catch so any error here
+            // does NOT silently skip the push-notification block below.
+            try {
+              console.log(`[MESSAGE] Starting conversation:updated emit loop for ${recipientUserIds.length} recipients`);
+              for (const recipientId of recipientUserIds) {
+                const recipientIdStr = recipientId?.toString();
+                console.log(`[MESSAGE] Looking up sockets for recipientId: ${recipientIdStr} (type: ${typeof recipientId})`);
+                const sockets = getSockets(recipientIdStr);
+                console.log(`[MESSAGE] getSockets result for ${recipientIdStr}:`, sockets, `| truthy:`, !!sockets);
+                if (sockets) {
+                  console.log(`[MESSAGE] sockets type: ${typeof sockets}, isArray: ${Array.isArray(sockets)}, constructor: ${sockets?.constructor?.name}`);
+                  for (const sid of sockets) {
+                    console.log(`[MESSAGE] Emitting conversation:updated to socket ${sid}`);
+                    io.to(sid).emit('conversation:updated', {
+                      conversationId,
+                      lastMessage: messageData,
+                      incrementUnread: true
+                    });
+                  }
                 }
               }
+              console.log(`[MESSAGE] conversation:updated emit loop completed`);
+            } catch (emitLoopErr) {
+              // Log the error but DO NOT re-throw — allow execution to continue
+              // to the push notification block below.
+              console.error(`[MESSAGE] Error inside conversation:updated emit loop:`, emitLoopErr);
+              console.error(`[MESSAGE] Error stack:`, emitLoopErr.stack);
             }
-                console.log(`test123`);
+
+            console.log(`[MESSAGE] Reached push notification gate. recipientUserIds.length = ${recipientUserIds.length}`);
             // Send Firebase Push Notification
             if (recipientUserIds.length > 0) {
               try {
