@@ -213,32 +213,28 @@ function chatHandler(io) {
                 console.log(`[NOTIFICATION] Starting push notification process for ${recipientUserIds.length} recipients`);
                 // Fetch actual tokens from MySQL for the recipients
                 const userTokensToNotify = [];
-                console.log(`[NOTIFICATION] Fetching tokens from MySQL Database Start`);
-                for (const id of recipientUserIds) {
-                    try {
-                        console.log(`[NOTIFICATION] Database Query Start: Fetching token for user ${id}`);
-                        const tokenData = await UserToken.findOne({
-                            where: {
-                                user_id: id,
-                                is_active: true
-                            }
-                        });
-                        console.log(`[NOTIFICATION] Database Query Completed: Fetching token for user ${id}`);
-                        
-                        if (tokenData) {
+                try {
+                    console.log(`[NOTIFICATION] Database Query Start: Fetching tokens for ${recipientUserIds.length} users`);
+                    const tokens = await UserToken.findAll({
+                        where: {
+                            user_id: recipientUserIds,
+                            is_active: true
+                        }
+                    });
+                    console.log(`[NOTIFICATION] Database Query Completed: Fetched tokens`);
+                    
+                    if (tokens && tokens.length > 0) {
+                        for (const tokenData of tokens) {
                             userTokensToNotify.push({
-                                user_id: id,
+                                user_id: tokenData.user_id,
                                 android_token: tokenData.android_token,
                                 web_token: tokenData.web_token
                             });
-                            console.log(`[NOTIFICATION] Token found for user ${id}`);
-                        } else {
-                            console.log(`[NOTIFICATION] No token document found for user ${id}`);
                         }
-                    } catch (dbErr) {
-                        console.error(`[NOTIFICATION] Error fetching token from MySQL for user ${id}:`, dbErr);
-                        console.error(`[NOTIFICATION] Complete Error Stack Trace:`, dbErr.stack);
                     }
+                } catch (dbErr) {
+                    console.error(`[NOTIFICATION] Error fetching tokens from MySQL:`, dbErr);
+                    console.error(`[NOTIFICATION] Complete Error Stack Trace:`, dbErr.stack);
                 }
                 console.log(`[NOTIFICATION] Fetching tokens from MySQL Database Completed. Found tokens for ${userTokensToNotify.length} users`);
 

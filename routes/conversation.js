@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const GroupUser = require('../models/GroupUser');
 const GroupMember = require('../models/GroupMember');
+const Group = require('../models/Group');
 
 /**
  * Helper to extract user identity directly from request headers, body, or query parameters.
@@ -116,14 +117,86 @@ router.get('/', async (req, res) => {
 
     const conversations = await Conversation.find({ $or: filters }).populate('lastMessage').sort({ updatedAt: -1 }).lean();
 
-    for (const conv of conversations) {
-      if (conv.type === 'group' && conv.groupId) {
-        const mem = groupMemberships.find(m => m.groupId.toString() === conv.groupId.toString());
-        if (mem) {
-          conv.groupMemberStatus = mem.status;
+    // ── Enrich group conversations with member data ──────────────────────────
+    const groupConvs = conversations.filter(c => c.type === 'group' && c.groupId);
+
+    if (groupConvs.length > 0) {
+      const allGroupIds = groupConvs.map(c => c.groupId);
+
+      // Batch fetch all GroupMember records (all statuses) for these groups
+      const allMembers = await GroupMember.find({
+        groupId: { $in: allGroupIds },
+        status: { $in: ['approved', 'pending', 'blocked'] }
+      }).lean();
+
+      // Batch fetch Group documents for createdBy
+      const groupDocs = await Group.find({ _id: { $in: allGroupIds } }).select('_id createdBy').lean();
+      const groupCreatedByMap = {};
+      groupDocs.forEach(g => { groupCreatedByMap[g._id.toString()] = g.createdBy; });
+
+      // Collect all unique member userIds for username lookup
+      const memberUserIds = [...new Set(allMembers.map(m => m.userId))];
+      const memberUsers = memberUserIds.length > 0
+        ? await User.findAll({ where: { user_id: memberUserIds }, attributes: ['user_id', 'user_name'] })
+        : [];
+      const memberUserNameMap = {};
+      memberUsers.forEach(u => { memberUserNameMap[u.user_id] = u.user_name; });
+
+      // Build per-group member index
+      const membersByGroup = {};
+      allMembers.forEach(m => {
+        const gId = m.groupId.toString();
+        if (!membersByGroup[gId]) membersByGroup[gId] = [];
+        membersByGroup[gId].push(m);
+      });
+
+      // Enrich each group conversation
+      for (const conv of conversations) {
+        if (conv.type === 'group' && conv.groupId) {
+          const gId = conv.groupId.toString();
+          const members = membersByGroup[gId] || [];
+
+          // Current user's membership status
+          const myMembership = groupMemberships.find(m => m.groupId.toString() === gId);
+          if (myMembership) conv.groupMemberStatus = myMembership.status;
+
+          // Full participant list with names, status, muteUntil
+          conv.participants = members.map(m => ({
+            userId: m.userId,
+            username: memberUserNameMap[m.userId] || ('User ' + m.userId),
+            status: m.status,
+            muteUntil: m.muteUntil || null
+          }));
+
+          // Admins list (array of userId strings, matches what Flutter expects)
+          conv.admins = members
+            .filter(m => m.role === 'admin')
+            .map(m => m.userId.toString());
+
+          conv.createdBy = groupCreatedByMap[gId] ?? null;
+
+          // Unread count for the current user: messages after their lastReadMessageId
+          const myMember = members.find(m => m.userId === currentUser.id);
+          if (myMember && myMember.lastReadMessageId) {
+            const lastReadMsg = await Message.findById(myMember.lastReadMessageId).select('createdAt').lean();
+            if (lastReadMsg) {
+              const unread = await Message.countDocuments({
+                conversationId: conv._id,
+                createdAt: { $gt: lastReadMsg.createdAt },
+                delete_type: { $ne: 2 },
+                deleted_by: { $ne: currentUser.id }
+              });
+              conv.unreadCounts = { [currentUser.id.toString()]: unread };
+            } else {
+              conv.unreadCounts = { [currentUser.id.toString()]: 0 };
+            }
+          } else {
+            conv.unreadCounts = { [currentUser.id.toString()]: 0 };
+          }
         }
       }
     }
+    // ── End enrichment ───────────────────────────────────────────────────────
 
     res.json(conversations);
   } catch (err) {
