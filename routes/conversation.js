@@ -198,6 +198,29 @@ router.get('/', async (req, res) => {
     }
     // ── End enrichment ───────────────────────────────────────────────────────
 
+    // ── Calculate unread counts for private conversations ────────────────────
+    for (const conv of conversations) {
+      if (conv.type === 'private') {
+        const myParticipant = conv.participants?.find(p => p.userId === currentUser.id);
+        
+        let unreadQuery = {
+          conversationId: conv._id,
+          delete_type: { $ne: 2 },
+          deleted_by: { $ne: currentUser.id }
+        };
+
+        if (myParticipant && myParticipant.lastRead) {
+          unreadQuery.createdAt = { $gt: myParticipant.lastRead };
+        }
+
+        const unread = await Message.countDocuments(unreadQuery);
+        // Ensure unreadCounts object exists
+        if (!conv.unreadCounts) conv.unreadCounts = {};
+        conv.unreadCounts[currentUser.id.toString()] = unread;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     res.json(conversations);
   } catch (err) {
     console.error(err);
