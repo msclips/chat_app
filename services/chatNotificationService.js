@@ -85,7 +85,7 @@ const sendChatNotification = async ({
 
         if (chatData) {
             const msgContent = chatData.message_content || chatData.content || chatData.message;
-            const msgType = chatData.message_type || chatData.messageType || 'text';
+            const msgType = chatData.msg_type || chatData.messageType || 'text';
 
             if (msgType !== 'text') {
                 description = `Sent an attachment`;
