@@ -161,7 +161,7 @@ function chatHandler(io) {
             });
             recipientUserIds = members
                 .map((member) => member.userId)
-                .filter((id) => id !== userId);
+                .filter((id) => id.toString() !== userId.toString());
         } else if (conversation.type === 'community') {
             const communityMemberships = await GroupUser.findAll({
                 where: {
@@ -172,10 +172,10 @@ function chatHandler(io) {
             });
             recipientUserIds = communityMemberships
                 .map((m) => m.user_id)
-                .filter((id) => id !== userId);
+                .filter((id) => id.toString() !== userId.toString());
         } else {
             for (const participant of conversation.participants) {
-                if (participant.userId !== userId) {
+                if (participant.userId.toString() !== userId.toString()) {
                     recipientUserIds.push(participant.userId);
                 }
             }
@@ -419,8 +419,8 @@ function chatHandler(io) {
             
             if (conversation.type !== 'community') {
                 for (const participant of conversation.participants) {
-                    if (participant.userId !== userId) {
-                        const sockets = getSockets(participant.userId);
+                    if (participant.userId.toString() !== userId.toString()) {
+                        const sockets = getSockets(participant.userId.toString());
                         if (sockets) {
                             for (const sid of sockets) {
                                 io.to(sid).emit('message:deleted', { messageId, deleteType, conversationId: conversation._id });

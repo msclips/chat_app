@@ -324,7 +324,29 @@ function initSocket() {
         }
     });
 
-    socket.on('conversation:updated', ({ conversationId, lastMessage }) => {
+    socket.on('conversation:updated', ({ conversationId, lastMessage, incrementUnread }) => {
+        const conv = conversations.find(c => c._id === conversationId);
+        if (conv) {
+            conv.lastMessage = lastMessage;
+            conv.updatedAt = lastMessage.createdAt || new Date();
+            
+            if (incrementUnread && activeConversationId !== conversationId) {
+                if (!conv.unreadCounts) conv.unreadCounts = {};
+                conv.unreadCounts[currentUser.id.toString()] = (conv.unreadCounts[currentUser.id.toString()] || 0) + 1;
+            } else if (activeConversationId === conversationId) {
+                // Instantly emit read receipt if we are looking at the chat
+                socket.emit('messages:read', { conversationId: conversationId, messageId: lastMessage._id });
+            }
+
+            // Move to top
+            conversations = conversations.filter(c => c._id !== conversationId);
+            conversations.unshift(conv);
+
+            renderConversations();
+        } else {
+            // New conversation, fetch it
+            fetchConversations();
+        }
         updateConversationPreview(lastMessage);
     });
 
@@ -441,6 +463,9 @@ function renderConversations() {
         // Show pending tag for groups
         const pendingTag = (conv.type === 'group' && conv.groupMemberStatus === 'pending') ? '<span style="color: #f59e0b; font-size: 10px; margin-left: 5px;">(Invite)</span>' : '';
 
+        const unreadCount = conv.unreadCounts ? (conv.unreadCounts[currentUser.id.toString()] || 0) : 0;
+        const badgeHTML = unreadCount > 0 ? `<div style="background-color: #22c55e; color: white; font-size: 11px; font-weight: bold; border-radius: 50%; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0 6px;">${unreadCount}</div>` : '';
+
         div.innerHTML = `
             <div class="avatar">${name.charAt(0).toUpperCase()}</div>
             <div class="conv-info">
@@ -448,7 +473,10 @@ function renderConversations() {
                     <h4>${name}${pendingTag}${muteIcon}</h4>
                     <span class="conv-time">${formatDate(conv.updatedAt)}</span>
                 </div>
-                <p class="conv-last-msg" id="last-msg-${conv._id}">${lastMsg}</p>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <p class="conv-last-msg" id="last-msg-${conv._id}">${lastMsg}</p>
+                    ${badgeHTML}
+                </div>
             </div>
         `;
         conversationsContainer.appendChild(div);
@@ -646,6 +674,18 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
+    
+    // Clear unread badge locally and tell server
+    const activeConv = conversations.find(c => c._id === id);
+    if (activeConv) {
+        if (!activeConv.unreadCounts) activeConv.unreadCounts = {};
+        if (activeConv.unreadCounts[currentUser.id.toString()] > 0) {
+            activeConv.unreadCounts[currentUser.id.toString()] = 0;
+            // Get the last message ID if available to mark as read
+            const lastMsgId = (activeConv.lastMessage && activeConv.lastMessage._id) ? activeConv.lastMessage._id : null;
+            socket.emit('messages:read', { conversationId: id, messageId: lastMsgId });
+        }
+    }
     
     // Manage Accept / Reject banners
     const requestBanner = document.getElementById('request-banner');

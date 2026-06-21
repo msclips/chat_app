@@ -13,46 +13,52 @@ const userSockets = new Map();
 
 /**
  * Register a socket for a user.
- * @param {number} userId
+ * @param {number|string} userId
  * @param {string} socketId
  */
 function addSocket(userId, socketId) {
-  if (!userSockets.has(userId)) {
-    userSockets.set(userId, new Set());
+  if (!userId) return;
+  const uid = userId.toString();
+  if (!userSockets.has(uid)) {
+    userSockets.set(uid, new Set());
   }
-  userSockets.get(userId).add(socketId);
+  userSockets.get(uid).add(socketId);
 }
 
 /**
  * Remove a socket for a user (on disconnect).
  * Cleans up the entry entirely if no sockets remain.
- * @param {number} userId
+ * @param {number|string} userId
  * @param {string} socketId
  */
 function removeSocket(userId, socketId) {
-  if (!userSockets.has(userId)) return;
-  userSockets.get(userId).delete(socketId);
-  if (userSockets.get(userId).size === 0) {
-    userSockets.delete(userId);
+  if (!userId) return;
+  const uid = userId.toString();
+  if (!userSockets.has(uid)) return;
+  userSockets.get(uid).delete(socketId);
+  if (userSockets.get(uid).size === 0) {
+    userSockets.delete(uid);
   }
 }
 
 /**
  * Get all socket IDs for a user.
- * @param {number} userId
+ * @param {number|string} userId
  * @returns {Set<string> | undefined}
  */
 function getSockets(userId) {
-  return userSockets.get(userId);
+  if (!userId) return undefined;
+  return userSockets.get(userId.toString());
 }
 
 /**
  * Check if a user has at least one active socket.
- * @param {number} userId
+ * @param {number|string} userId
  * @returns {boolean}
  */
 function isOnline(userId) {
-  const sockets = userSockets.get(userId);
+  if (!userId) return false;
+  const sockets = userSockets.get(userId.toString());
   return !!(sockets && sockets.size > 0);
 }
 
