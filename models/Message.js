@@ -37,7 +37,8 @@ const messageSchema = new mongoose.Schema({
   isEdited: { type: Boolean, default: false },
   isDeleted: { type: Boolean, default: false },
   delete_type: { type: Number, enum: [1, 2, null], default: null },
-  deleted_by: [{ type: Number }]
+  deleted_by: [{ type: Number }],
+  reactions: { type: Object, default: {} }
 }, {
   timestamps: true
 });

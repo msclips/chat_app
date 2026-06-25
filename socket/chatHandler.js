@@ -295,12 +295,14 @@ function chatHandler(io) {
                 await sendChatNotification({
                   userIds: userTokensToNotify,
                   senderName: username,
+                  conversationName: conversation.groupName || conversation.communityName || username,
                   chatData: {
                     chat_id: conversationId,
                     chat_type: conversation.type,
                     group_id: conversation.groupId ? conversation.groupId.toString() : (conversation.communityId ? conversation.communityId.toString() : ''),
                     message_id: message._id.toString(),
                     sender_id: userId,
+                    sender_name: username,
                     message_content: message.content,
                     msg_type: message.messageType
                   }
@@ -447,6 +449,43 @@ function chatHandler(io) {
         socket.emit('message:error', { error: 'Failed to delete message' });
       }
     });
+
+    // React to Message
+    socket.on('message:react', async (data) => {
+      try {
+        let parsedData;
+        try {
+          parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        } catch (err) {
+          console.error('Invalid JSON:', data);
+          return;
+        }
+
+        const { messageId, emoji } = parsedData;
+        if (!messageId) return;
+
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        if (!message.reactions) message.reactions = {};
+
+        if (emoji && emoji.trim() !== '') {
+          message.reactions[userId.toString()] = emoji;
+        } else {
+          delete message.reactions[userId.toString()];
+        }
+        message.markModified('reactions');
+        await message.save();
+
+        const messageData = message.toObject();
+        socket.emit('message:updated', messageData);
+        socket.to(`conv:${message.conversationId}`).emit('message:updated', messageData);
+      } catch (err) {
+        console.error('Message react error:', err);
+        socket.emit('message:error', { error: 'Failed to react to message' });
+      }
+    });
+
     // Poll Vote
     socket.on('message:poll_vote', async (data) => {
       try {
@@ -929,6 +968,164 @@ function chatHandler(io) {
             console.error('messages:read error:', err);
         }
     });
+
+    // ─── Group Request Flow ────────────────────────────────────────────────────
+
+    // User submits a group creation request (goes for admin approval)
+    socket.on('group:request_create', async (data, callback) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { group_name, description } = parsedData;
+
+            if (!group_name || !group_name.trim()) {
+                if (typeof callback === 'function') return callback({ success: false, message: 'Group name is required' });
+                return socket.emit('group:error', { error: 'Group name is required' });
+            }
+
+            const GroupRequest = require('../models/GroupRequest');
+
+            const request = await GroupRequest.create({
+                group_name: group_name.trim(),
+                description: description || null,
+                requested_by: userId,
+                requested_by_name: username,
+                status: 'pending',
+            });
+
+            // Notify the requester that the request was submitted
+            socket.emit('group:request_submitted', {
+                requestId: request.id,
+                group_name: request.group_name,
+                status: 'pending',
+            });
+
+            // Broadcast to all connected admin sockets (role_id passed via handshake auth)
+            // The admin client should join room 'admin:group_requests' on connect.
+            io.to('admin:group_requests').emit('group:request_received', {
+                requestId: request.id,
+                group_name: request.group_name,
+                description: request.description,
+                requested_by: userId,
+                requested_by_name: username,
+                status: 'pending',
+                created_at: request.created_at,
+            });
+
+            if (typeof callback === 'function') {
+                callback({ success: true, message: 'Group request submitted for approval', requestId: request.id });
+            }
+        } catch (err) {
+            console.error('group:request_create error:', err);
+            if (typeof callback === 'function') callback({ success: false, message: err.message });
+            else socket.emit('group:error', { error: 'Failed to submit group request' });
+        }
+    });
+
+    // Admin joins the admin notification room to receive new request notifications
+    socket.on('admin:join_requests_room', () => {
+        socket.join('admin:group_requests');
+        console.log(`✅ Admin ${userId} joined admin:group_requests room`);
+    });
+
+    // Admin approves or rejects a group creation request
+    socket.on('updateGroupRequestStatus', async (data, callback) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { requestId, status, reason } = parsedData;
+
+            if (!requestId || !['approved', 'rejected'].includes(status)) {
+                if (typeof callback === 'function') return callback({ success: false, message: 'Invalid request data' });
+                return;
+            }
+
+            const GroupRequest = require('../models/GroupRequest');
+            const groupRequest = await GroupRequest.findByPk(requestId);
+            if (!groupRequest) {
+                if (typeof callback === 'function') return callback({ success: false, message: 'Request not found' });
+                return;
+            }
+
+            if (groupRequest.status !== 'pending') {
+                if (typeof callback === 'function') return callback({ success: false, message: 'Request already processed' });
+                return;
+            }
+
+            groupRequest.status = status;
+            groupRequest.updated_by = userId;
+            groupRequest.updated_at = new Date();
+            if (status === 'rejected' && reason) groupRequest.rejection_reason = reason;
+
+            let createdGroupMasterId = null;
+
+            if (status === 'approved') {
+                // Create entry in MySQL GroupMaster
+                const GroupMasterModel = require('../models/GroupMaster');
+                const GroupUserModel = require('../models/GroupUser');
+
+                const newGroup = await GroupMasterModel.create({
+                    group_name: groupRequest.group_name,
+                    description: groupRequest.description,
+                    is_active: 1,
+                    created_by: groupRequest.requested_by,
+                    created_by_name: groupRequest.requested_by_name,
+                    created_at: new Date(),
+                });
+
+                createdGroupMasterId = newGroup.group_id;
+
+                // Add requester as admin of the new group
+                await GroupUserModel.create({
+                    group_id: newGroup.group_id,
+                    user_id: groupRequest.requested_by,
+                    role: 1, // admin
+                    status: 1, // approved
+                    joined_at: new Date(),
+                    is_active: 1,
+                    created_by: userId,
+                    created_at: new Date(),
+                });
+
+                groupRequest.group_id = newGroup.group_id;
+            }
+
+            await groupRequest.save();
+
+            // Notify the original requester via their socket(s)
+            const requesterSockets = getSockets(groupRequest.requested_by);
+            if (requesterSockets) {
+                const notifyPayload = {
+                    requestId: groupRequest.id,
+                    group_name: groupRequest.group_name,
+                    status,
+                    rejection_reason: status === 'rejected' ? reason : null,
+                    group_id: createdGroupMasterId,
+                    approved_by: username,
+                };
+                for (const sid of requesterSockets) {
+                    io.to(sid).emit('group:request_status_updated', notifyPayload);
+                }
+            }
+
+            // Acknowledge to admin
+            if (typeof callback === 'function') {
+                callback({
+                    success: true,
+                    message: `Group request successfully ${status}`,
+                    data: {
+                        requestId: groupRequest.id,
+                        group_name: groupRequest.group_name,
+                        status,
+                        group_id: createdGroupMasterId,
+                    },
+                });
+            }
+        } catch (err) {
+            console.error('updateGroupRequestStatus error:', err);
+            if (typeof callback === 'function') callback({ success: false, message: err.message });
+        }
+    });
+
+    // ──────────────────────────────────────────────────────────────────────────
 
     socket.on('disconnect', () => {
       console.log(`❌ User disconnected: ${username}`);

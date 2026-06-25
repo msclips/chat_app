@@ -3,6 +3,8 @@ const router = express.Router();
 const GroupMaster = require('../models/GroupMaster');
 const GroupUser = require('../models/GroupUser');
 const Conversation = require('../models/Conversation');
+const GroupRequest = require('../models/GroupRequest');
+const { Op } = require('sequelize');
 
 function getRequestUser(req) {
   const userId = req.headers['x-user-id'] || req.body.userId || req.query.userId || req.body.id || req.query.id;
@@ -125,6 +127,43 @@ router.get('/:groupId/membership', async (req, res) => {
     res.json({ isMember: !!membership });
   } catch (err) {
     console.error('Error checking group membership:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── Group Request Endpoints ──────────────────────────────────────────────────
+
+// GET /api/groups/requests?status=pending  (admin use)
+router.get('/requests', async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const where = ['pending', 'approved', 'rejected'].includes(status)
+      ? { status }
+      : {};
+
+    const requests = await GroupRequest.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+    });
+
+    res.json(requests);
+  } catch (err) {
+    console.error('Error fetching group requests:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/groups/requests/my  — requests by the current user
+router.get('/requests/my', async (req, res) => {
+  const currentUser = getRequestUser(req);
+  try {
+    const requests = await GroupRequest.findAll({
+      where: { requested_by: currentUser.id },
+      order: [['created_at', 'DESC']],
+    });
+    res.json(requests);
+  } catch (err) {
+    console.error('Error fetching user group requests:', err);
     res.status(500).json({ message: err.message });
   }
 });

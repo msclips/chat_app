@@ -12,6 +12,7 @@ const conversationRoutes = require('./routes/conversation');
 const communityRoutes = require('./routes/community');
 const groupRoutes = require('./routes/group');
 const socketRoutes = require('./routes/socket');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 const server = http.createServer(app);
@@ -52,6 +53,7 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/communities', communityRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/socket', socketRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 
 // Connect Databases and Start Server

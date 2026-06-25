@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
+const Message = require('../models/Message');
 
 const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction) {
@@ -55,19 +56,53 @@ const convertObjectValuesToString = (obj) => {
 };
 
 /**
+ * Fetch last N messages for a conversation and format them as a notification body.
+ */
+const buildNotificationBody = async (conversationId, chatType, senderName, currentMessage) => {
+    try {
+        const recentMessages = await Message.find({ conversationId })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .lean();
+
+        if (!recentMessages || recentMessages.length === 0) {
+            // Fallback to current message content
+            const msgType = currentMessage?.msg_type || currentMessage?.messageType || 'text';
+            if (msgType !== 'text') return `${senderName} sent an attachment`;
+            return currentMessage?.message_content || `${senderName} sent you a message`;
+        }
+
+        const lines = recentMessages.reverse().map(m => {
+            const content = m.content && m.content.trim() !== '' ? m.content : null;
+            if (!content) return null;
+            const isGroup = chatType === 'group' || chatType === 'community';
+            return isGroup ? `${m.senderName}: ${content}` : content;
+        }).filter(Boolean);
+
+        return lines.join('\n') || `${senderName} sent you a message`;
+    } catch (err) {
+        console.error('[NOTIFICATION] Error building notification body:', err.message);
+        const msgContent = currentMessage?.message_content || '';
+        return msgContent.trim() || `${senderName} sent you a message`;
+    }
+};
+
+/**
  * Service to send chat push notifications
  * @param {Object} params
- * @param {Array} params.userIds - Array of objects like { user_id: 'user_id', android_token: 'token1', web_token: 'token2', user_image: 'url' }
- * @param {String} params.senderName - Name of the sender
- * @param {Object} params.chatData - Chat data payload (chat_id, message_id, sender_id, receiver_id)
+ * @param {Array}  params.userIds          - Array of { user_id, android_token, web_token }
+ * @param {String} params.senderName       - Sender display name
+ * @param {Object} params.chatData         - Payload (chat_id, message_id, sender_id, ...)
+ * @param {String} params.conversationName - Display name for the notification title (group name etc.)
  */
 const sendChatNotification = async ({
     userIds,
     senderName,
-    chatData
+    chatData,
+    conversationName
 }) => {
     console.log("[NOTIFICATION] Function Started: sendChatNotification");
-    console.log("[NOTIFICATION] Input Parameters:", { senderName });
+    console.log("[NOTIFICATION] Input Parameters:", { senderName, conversationName });
     console.log("[NOTIFICATION] User Tokens Data Received:", userIds);
     console.log("[NOTIFICATION] Template Data Received:", chatData);
 
@@ -80,19 +115,15 @@ const sendChatNotification = async ({
         console.log("[NOTIFICATION] Firebase Initialization Status: Initialized");
 
         const messaging = admin.messaging();
-        const title = senderName || "New Message";
-        let description = `${senderName || 'Someone'} sent you a message`;
+        const chatType = chatData?.chat_type || 'direct';
+        const conversationId = chatData?.chat_id || '';
 
-        if (chatData) {
-            const msgContent = chatData.message_content || chatData.content || chatData.message;
-            const msgType = chatData.msg_type || chatData.messageType || 'text';
+        // Title: group/community shows group name, direct shows sender name
+        const isGroupChat = chatType === 'group' || chatType === 'community';
+        const title = (isGroupChat && conversationName) ? conversationName : (senderName || 'New Message');
 
-            if (msgType !== 'text') {
-                description = `Sent an attachment`;
-            } else if (msgContent && msgContent.trim() !== '') {
-                description = msgContent;
-            }
-        }
+        // Build body from last N messages for WhatsApp-style aggregation
+        const description = await buildNotificationBody(conversationId, chatType, senderName, chatData);
 
         console.log(`[NOTIFICATION] Total Users Count: ${userIds ? userIds.length : 0}`);
 
@@ -109,8 +140,24 @@ const sendChatNotification = async ({
         userIds.forEach(user => {
             const dataPayload = {
                 type: "chat_message",
+                sender_name: senderName || '',
                 ...convertObjectValuesToString(chatData)
             };
+
+            // Android: tag groups notifications per conversation (WhatsApp-style overwrite)
+            const androidConfig = conversationId ? {
+                notification: {
+                    tag: conversationId,
+                    channelId: 'high_importance_channel',
+                },
+            } : undefined;
+
+            // iOS: thread-id groups notifications per conversation
+            const apnsConfig = conversationId ? {
+                payload: {
+                    aps: { 'thread-id': conversationId },
+                },
+            } : undefined;
 
             // send to Android if token available
             if (user.android_token && !uniqueTokens.has(user.android_token)) {
@@ -118,11 +165,10 @@ const sendChatNotification = async ({
                 androidTokensCount++;
                 messages.push({
                     token: user.android_token,
-                    notification: {
-                        title,
-                        body: description,
-                    },
+                    notification: { title, body: description },
                     data: dataPayload,
+                    ...(androidConfig ? { android: androidConfig } : {}),
+                    ...(apnsConfig ? { apns: apnsConfig } : {}),
                 });
             }
 
@@ -132,10 +178,7 @@ const sendChatNotification = async ({
                 webTokensCount++;
                 messages.push({
                     token: user.web_token,
-                    notification: {
-                        title,
-                        body: description,
-                    },
+                    notification: { title, body: description },
                     data: dataPayload,
                 });
             }
