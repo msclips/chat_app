@@ -273,10 +273,10 @@ router.get('/:id/messages', async (req, res) => {
 
     const messages = await Message.find(messageQuery)
       .populate('replyTo', 'senderName content')
-      .sort({ createdAt: 1 }) // Oldest first for chat history
+      .sort({ createdAt: -1 }) // Newest first to get the latest 50
       .limit(50);
     console.log(`Found ${messages.length} messages`);
-    res.json(messages);
+    res.json(messages.reverse());
   } catch (err) {
     console.error('Error fetching messages:', err);
     res.status(500).send('Server Error');
