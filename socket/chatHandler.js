@@ -623,8 +623,18 @@ function chatHandler(io) {
             const { name, description, photoUrl, initialMembers } = parsedData;
             
             if (!name) return socket.emit('group:error', { error: 'Group name is required' });
+            
+            if (photoUrl && !photoUrl.startsWith('data:image/')) {
+                return socket.emit('group:error', { error: 'Invalid image format. Must be a base64 string.' });
+            }
 
-            const conversation = new Conversation({ type: 'group', groupName: name, participants: [], status: 'accepted' });
+            const conversation = new Conversation({ 
+                type: 'group', 
+                groupName: name, 
+                photoUrl: photoUrl || null,
+                participants: [], 
+                status: 'accepted' 
+            });
             await conversation.save();
 
             const group = new Group({
@@ -662,7 +672,20 @@ function chatHandler(io) {
             await GroupMember.insertMany(members);
 
             socket.join(`conv:${conversation._id}`);
-            socket.emit('group:created', { group, conversationId: conversation._id });
+            
+            // Format the response to match Flutter frontend expectations
+            const formattedConversation = {
+                _id: conversation._id,
+                type: 'group',
+                groupName: group.name,
+                photoUrl: group.photoUrl,
+                participants: members.map(m => ({ userId: m.userId, status: m.status })),
+                admins: members.filter(m => m.role === 'admin').map(m => m.userId),
+                createdBy: userId,
+                createdAt: conversation.createdAt || new Date()
+            };
+            
+            socket.emit('group:created', { conversation: formattedConversation });
 
             // Notify invited members
             members.forEach(m => {
