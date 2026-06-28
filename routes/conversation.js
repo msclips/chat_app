@@ -234,6 +234,21 @@ router.get('/', async (req, res) => {
           unreadQuery.createdAt = { $gt: myParticipant.lastRead };
         }
       } else if (conv.type === 'community') {
+        try {
+          const GroupMaster = require('../models/GroupMaster');
+          const NgoMaster = require('../models/NgoMaster');
+          const group = await GroupMaster.findByPk(conv.communityId, { attributes: ['ngo_id'] });
+          if (group && group.ngo_id) {
+            const ngo = await NgoMaster.findByPk(group.ngo_id, { attributes: ['ngo_logo_path'] });
+            if (ngo && ngo.ngo_logo_path && ngo.ngo_logo_path !== 'null') {
+              const baseUrl = process.env.GET_LIVE_CURRENT_URL || 'http://localhost:5000';
+              conv.photoUrl = `${baseUrl}/resources/${ngo.ngo_logo_path}`;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to get community ngo logo path', e);
+        }
+
         // Use communityMemberships fetched at the top of the route
         const myMembership = communityMemberships.find(m => m.group_id === conv.communityId);
         if (myMembership?.last_seen_at) {
@@ -397,13 +412,27 @@ router.get('/:id/groupInfo', async (req, res) => {
 
     } else if (conversation.type === 'community') {
       const GroupMaster = require('../models/GroupMaster');
+      const NgoMaster = require('../models/NgoMaster');
       const group = await GroupMaster.findByPk(conversation.communityId);
       if (!group) return res.status(404).json({ message: 'Community not found' });
+      
+      let photoUrl = group.image_path || null;
+      if (group.ngo_id) {
+        try {
+          const ngo = await NgoMaster.findByPk(group.ngo_id, { attributes: ['ngo_logo_path'] });
+          if (ngo && ngo.ngo_logo_path && ngo.ngo_logo_path !== 'null') {
+            const baseUrl = process.env.GET_LIVE_CURRENT_URL || 'http://localhost:5000';
+            photoUrl = `${baseUrl}/resources/${ngo.ngo_logo_path}`;
+          }
+        } catch (e) {
+          console.error('Failed to get community info ngo logo path', e);
+        }
+      }
       
       groupDetails = {
         name: group.group_name,
         description: group.description,
-        photoUrl: group.image_path || null,
+        photoUrl: photoUrl,
         groupId: group.group_id,
         isCommunity: true
       };
