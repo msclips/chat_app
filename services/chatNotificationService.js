@@ -56,34 +56,27 @@ const convertObjectValuesToString = (obj) => {
 };
 
 /**
- * Fetch last N messages for a conversation and format them as a notification body.
+ * Format the unread messages for a specific user into a WhatsApp-style notification body.
  */
-const buildNotificationBody = async (conversationId, chatType, senderName, currentMessage) => {
+const buildUnreadNotificationBody = (unreadMessages, chatType, senderName, currentMessage) => {
     try {
-        const recentMessages = await Message.find({ conversationId })
-            .sort({ createdAt: -1 })
-            .limit(5)
-            .lean();
-
-        if (!recentMessages || recentMessages.length === 0) {
-            // Fallback to current message content
+        if (!unreadMessages || unreadMessages.length === 0) {
             const msgType = currentMessage?.msg_type || currentMessage?.messageType || 'text';
-            if (msgType !== 'text') return `${senderName} sent an attachment`;
+            if (msgType !== 'text') return '📷 Photo' || `${senderName} sent an attachment`;
             return currentMessage?.message_content || `${senderName} sent you a message`;
         }
 
-        const lines = recentMessages.reverse().map(m => {
+        const lines = unreadMessages.reverse().map(m => {
             const content = m.content && m.content.trim() !== '' ? m.content : null;
             if (!content) return null;
             const isGroup = chatType === 'group' || chatType === 'community';
-            return isGroup ? `${m.senderName}: ${content}` : content;
+            return isGroup ? `${m.senderName || senderName}: ${content}` : content;
         }).filter(Boolean);
 
         return lines.join('\n') || `${senderName} sent you a message`;
     } catch (err) {
-        console.error('[NOTIFICATION] Error building notification body:', err.message);
-        const msgContent = currentMessage?.message_content || '';
-        return msgContent.trim() || `${senderName} sent you a message`;
+        console.error('[NOTIFICATION] Error building unread body:', err.message);
+        return currentMessage?.message_content || `${senderName} sent you a message`;
     }
 };
 
@@ -102,17 +95,12 @@ const sendChatNotification = async ({
     conversationName
 }) => {
     console.log("[NOTIFICATION] Function Started: sendChatNotification");
-    console.log("[NOTIFICATION] Input Parameters:", { senderName, conversationName });
-    console.log("[NOTIFICATION] User Tokens Data Received:", userIds);
-    console.log("[NOTIFICATION] Template Data Received:", chatData);
-
+    
     try {
-        console.log("[NOTIFICATION] Firebase Initialization Status Check");
         if (!admin.apps.length) {
             console.error("[NOTIFICATION] ❌ Firebase Admin SDK is NOT initialized.");
             return;
         }
-        console.log("[NOTIFICATION] Firebase Initialization Status: Initialized");
 
         const messaging = admin.messaging();
         const chatType = chatData?.chat_type || 'direct';
@@ -122,10 +110,26 @@ const sendChatNotification = async ({
         const isGroupChat = chatType === 'group' || chatType === 'community';
         const title = (isGroupChat && conversationName) ? conversationName : (senderName || 'New Message');
 
-        // Build body from last N messages for WhatsApp-style aggregation
-        const description = await buildNotificationBody(conversationId, chatType, senderName, chatData);
+        // Fetch recent messages ONCE for the conversation to find unread ones per user
+        let recentMessages = [];
+        let conversationDb = null;
+        let groupMemberships = [];
+        let communityMemberships = [];
 
-        console.log(`[NOTIFICATION] Total Users Count: ${userIds ? userIds.length : 0}`);
+        if (conversationId) {
+             recentMessages = await Message.find({ conversationId })
+                .sort({ createdAt: -1 })
+                .limit(10) // Fetch up to 10 recent messages
+                .lean();
+
+             conversationDb = await require('../models/Conversation').findById(conversationId).lean();
+             
+             if (chatType === 'group' && conversationDb?.groupId) {
+                 groupMemberships = await require('../models/GroupMember').find({ groupId: conversationDb.groupId }).lean();
+             } else if (chatType === 'community' && conversationDb?.communityId) {
+                 communityMemberships = await require('../models/GroupUser').findAll({ where: { group_id: conversationDb.communityId } });
+             }
+        }
 
         if (!userIds || userIds.length === 0) {
             console.log("[NOTIFICATION] No user IDs (with tokens) provided. Skipping chat notification send.");
@@ -138,13 +142,45 @@ const sendChatNotification = async ({
         let webTokensCount = 0;
 
         userIds.forEach(user => {
+            // Determine this user's read threshold
+            let unreadForUser = [];
+            
+            if (recentMessages.length > 0) {
+                let lastReadTime = null;
+
+                if (chatType === 'private' && conversationDb) {
+                    const participant = conversationDb.participants?.find(p => String(p.userId) === String(user.user_id));
+                    if (participant && participant.lastRead) lastReadTime = new Date(participant.lastRead);
+                } else if (chatType === 'group') {
+                    const member = groupMemberships.find(m => String(m.userId) === String(user.user_id));
+                    if (member && member.lastReadMessageId) {
+                        const readMsg = recentMessages.find(m => String(m._id) === String(member.lastReadMessageId));
+                        if (readMsg) lastReadTime = new Date(readMsg.createdAt);
+                    }
+                } else if (chatType === 'community') {
+                    const member = communityMemberships.find(m => String(m.user_id) === String(user.user_id));
+                    if (member && member.last_seen_at) lastReadTime = new Date(member.last_seen_at);
+                }
+
+                // Filter messages created after the user's lastReadTime
+                // (Also exclude messages sent by the user themselves)
+                unreadForUser = recentMessages.filter(m => {
+                    if (String(m.senderId) === String(user.user_id)) return false;
+                    if (!lastReadTime) return true; // If no read record, assume all are unread
+                    return new Date(m.createdAt) > lastReadTime;
+                });
+            }
+
+            // Build the body string containing only their unread messages
+            const description = buildUnreadNotificationBody(unreadForUser, chatType, senderName, chatData);
+
             const dataPayload = {
                 type: "chat_message",
                 sender_name: senderName || '',
                 ...convertObjectValuesToString(chatData)
             };
 
-            // Android: tag groups notifications per conversation (WhatsApp-style overwrite)
+            // Android: tag groups notifications per conversation
             const androidConfig = conversationId ? {
                 notification: {
                     tag: conversationId,
