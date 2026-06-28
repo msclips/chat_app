@@ -16,6 +16,7 @@ const conversationSchema = new mongoose.Schema({
   communityName: { type: String, default: null },
   groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
   groupName: { type: String, default: null },
+  photoUrl: { type: String, default: null },
   lastMessage: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Message',

@@ -14,6 +14,9 @@ const User = sequelize.define('User', {
         }, password: {
             type: DataTypes.STRING(120),
             allowNull: false
+        }, file_path: {
+            type: DataTypes.STRING(255),
+            allowNull: true
         }
 }, {
   tableName: 'user_master',

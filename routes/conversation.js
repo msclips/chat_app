@@ -216,6 +216,20 @@ router.get('/', async (req, res) => {
 
       if (conv.type === 'private') {
         const myParticipant = conv.participants?.find(p => p.userId === currentUser.id);
+        const otherParticipant = conv.participants?.find(p => p.userId !== currentUser.id);
+        
+        if (otherParticipant) {
+          try {
+            const otherUser = await User.findByPk(otherParticipant.userId, { attributes: ['file_path'] });
+            if (otherUser && otherUser.file_path && otherUser.file_path !== 'null') {
+              const baseUrl = process.env.GET_LIVE_CURRENT_URL || 'http://localhost:5000';
+              conv.photoUrl = `${baseUrl}/resources/${otherUser.file_path}`;
+            }
+          } catch (e) {
+            console.error('Failed to get other user photoUrl', e);
+          }
+        }
+        
         if (myParticipant?.lastRead) {
           unreadQuery.createdAt = { $gt: myParticipant.lastRead };
         }

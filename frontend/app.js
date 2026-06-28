@@ -37,6 +37,9 @@ const groupDescInput = document.getElementById('group-desc-input');
 const groupUserSearchInput = document.getElementById('group-user-search-input');
 const groupUsersListContainer = document.getElementById('group-users-list');
 const createGroupSubmitBtn = document.getElementById('create-group-submit-btn');
+const newGroupImageUpload = document.getElementById('new-group-image-upload');
+const newGroupAvatarPreview = document.getElementById('new-group-avatar-preview');
+let newGroupPhotoUrl = null;
 let selectedGroupMembers = new Set();
 
 const replyIndicator = document.getElementById('reply-indicator');
@@ -1116,6 +1119,35 @@ userSearchInput.addEventListener('input', (e) => {
 });
 
 // --- Group Modal Events ---
+if (newGroupImageUpload) {
+    newGroupImageUpload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file');
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Image size must be less than 5MB');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            newGroupPhotoUrl = e.target.result;
+            if (newGroupAvatarPreview) {
+                newGroupAvatarPreview.innerHTML = `<img src="${newGroupPhotoUrl}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            }
+        };
+        reader.onerror = () => {
+            alert('Failed to read image file');
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 if (newGroupBtn) {
     newGroupBtn.addEventListener('click', () => {
         if (newGroupModal) newGroupModal.classList.remove('hidden');
@@ -1123,6 +1155,13 @@ if (newGroupBtn) {
         if (groupDescInput) groupDescInput.value = '';
         if (groupUserSearchInput) groupUserSearchInput.value = '';
         selectedGroupMembers.clear();
+        newGroupPhotoUrl = null;
+        if (newGroupAvatarPreview) {
+            newGroupAvatarPreview.innerHTML = 'G';
+        }
+        if (newGroupImageUpload) {
+            newGroupImageUpload.value = '';
+        }
         renderGroupUsers();
         if (groupNameInput) groupNameInput.focus();
     });
@@ -1148,7 +1187,7 @@ if (createGroupSubmitBtn) {
         socket.emit('group:create', {
             name,
             description: groupDescInput.value.trim(),
-            photoUrl: null,
+            photoUrl: newGroupPhotoUrl,
             initialMembers: Array.from(selectedGroupMembers)
         });
         
