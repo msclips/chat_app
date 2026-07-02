@@ -262,6 +262,24 @@ router.get('/', async (req, res) => {
     }));
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Update lastMessage if it was deleted by this user ─────────────────────────
+    for (const conv of conversations) {
+      if (conv.lastMessage) {
+        const isDeletedForEveryone = conv.lastMessage.delete_type === 2;
+        const isDeletedForMe = conv.lastMessage.deleted_by && conv.lastMessage.deleted_by.includes(currentUser.id);
+        
+        if (isDeletedForEveryone || isDeletedForMe) {
+          const actualLastMsg = await Message.findOne({
+            conversationId: conv._id,
+            isDeleted: false,
+            deleted_by: { $ne: currentUser.id }
+          }).sort({ createdAt: -1 }).lean();
+          conv.lastMessage = actualLastMsg || null;
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     res.json(conversations);
   } catch (err) {
     console.error(err);

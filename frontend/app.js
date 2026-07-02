@@ -314,10 +314,14 @@ function initSocket() {
     socket.on('conversation:updated', ({ conversationId, lastMessage, incrementUnread, groupName, photoUrl }) => {
         const conv = conversations.find(c => c._id === conversationId);
         if (conv) {
-            if (lastMessage) {
+            if (lastMessage !== undefined) {
                 conv.lastMessage = lastMessage;
-                conv.updatedAt = lastMessage.createdAt || new Date();
-                updateConversationPreview(lastMessage);
+                if (lastMessage) {
+                    conv.updatedAt = lastMessage.createdAt || new Date();
+                    if (typeof updateConversationPreview === 'function') {
+                        updateConversationPreview(lastMessage);
+                    }
+                }
             }
             if (groupName) {
                 conv.groupName = groupName;
@@ -504,10 +508,18 @@ function renderConversations() {
 
         let lastMsg = 'No messages yet';
         if (conv.lastMessage) {
-            if (typeof conv.lastMessage === 'object' && conv.lastMessage.content) {
-                lastMsg = conv.lastMessage.content;
-            } else if (typeof conv.lastMessage === 'object' && conv.lastMessage.messageType === 'poll') {
-                lastMsg = 'Poll: ' + (conv.lastMessage.pollData ? conv.lastMessage.pollData.question : '');
+            if (typeof conv.lastMessage === 'object') {
+                if (conv.lastMessage.messageType === 'poll') {
+                    lastMsg = 'Poll: ' + (conv.lastMessage.pollData ? conv.lastMessage.pollData.question : '');
+                } else if (conv.lastMessage.messageType === 'image') {
+                    lastMsg = '📷 Image';
+                } else if (conv.lastMessage.messageType === 'file') {
+                    lastMsg = '📄 File';
+                } else if (conv.lastMessage.content) {
+                    lastMsg = conv.lastMessage.content;
+                } else {
+                    lastMsg = 'New message...';
+                }
             } else {
                 lastMsg = 'New message...';
             }

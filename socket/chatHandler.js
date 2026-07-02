@@ -417,9 +417,27 @@ function chatHandler(io) {
 
         await message.save();
 
+        // Find the new last message for the conversation globally
+        const globalLastMessage = await Message.findOne({
+            conversationId: conversation._id,
+            isDeleted: false
+        }).sort({ createdAt: -1 });
+
+        if (globalLastMessage) {
+            conversation.lastMessage = globalLastMessage._id;
+            conversation.lastMessageTime = globalLastMessage.createdAt;
+        } else {
+            conversation.lastMessage = null;
+        }
+        await conversation.save();
+
         if (deleteType === 2) {
             socket.emit('message:deleted', { messageId, deleteType });
             socket.to(`conv:${message.conversationId}`).emit('message:deleted', { messageId, deleteType });
+
+            const lastMsgData = globalLastMessage ? globalLastMessage.toObject() : null;
+            socket.emit('conversation:updated', { conversationId: conversation._id.toString(), lastMessage: lastMsgData });
+            socket.to(`conv:${conversation._id}`).emit('conversation:updated', { conversationId: conversation._id.toString(), lastMessage: lastMsgData });
             
             if (conversation.type !== 'community') {
                 for (const participant of conversation.participants) {
@@ -428,6 +446,7 @@ function chatHandler(io) {
                         if (sockets) {
                             for (const sid of sockets) {
                                 io.to(sid).emit('message:deleted', { messageId, deleteType, conversationId: conversation._id });
+                                io.to(sid).emit('conversation:updated', { conversationId: conversation._id.toString(), lastMessage: lastMsgData });
                             }
                         }
                     }
@@ -435,11 +454,22 @@ function chatHandler(io) {
             }
         } else if (deleteType === 1) {
             socket.emit('message:deleted', { messageId, deleteType });
+            
+            // For deleteType 1, find the last message visible specifically to this user
+            const myLastMessage = await Message.findOne({
+                conversationId: conversation._id,
+                isDeleted: false,
+                deleted_by: { $ne: userId }
+            }).sort({ createdAt: -1 });
+            const myLastMsgData = myLastMessage ? myLastMessage.toObject() : null;
+            socket.emit('conversation:updated', { conversationId: conversation._id.toString(), lastMessage: myLastMsgData });
+
             const sockets = getSockets(userId);
             if (sockets) {
                 for (const sid of sockets) {
                     if (sid !== socket.id) {
                         io.to(sid).emit('message:deleted', { messageId, deleteType, conversationId: conversation._id });
+                        io.to(sid).emit('conversation:updated', { conversationId: conversation._id.toString(), lastMessage: myLastMsgData });
                     }
                 }
             }
