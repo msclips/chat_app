@@ -243,36 +243,20 @@ function initSocket() {
         if (updatedMessage.conversationId === activeConversationId) {
             const msgEl = document.querySelector(`.message[data-id="${updatedMessage._id}"]`);
             if (msgEl) {
-                if (updatedMessage.messageType === 'poll') {
-                    // For polls, it's easier to just recreate and replace
-                    const nextSibling = msgEl.nextSibling;
-                    msgEl.remove();
-                    
-                    // Temporary flag to prevent auto scroll down if not at bottom
-                    const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
-                    
-                    appendMessage(updatedMessage);
-                    const newMsgEl = messagesContainer.lastElementChild;
-                    if (nextSibling) {
-                        messagesContainer.insertBefore(newMsgEl, nextSibling);
-                    }
-                    
-                    if (isAtBottom) scrollToBottom();
-                } else {
-                    const contentEl = msgEl.querySelector('.message-content');
-                    if (contentEl) contentEl.textContent = updatedMessage.content;
-                    
-                    let editedLabel = msgEl.querySelector('.edited-label');
-                    if (!editedLabel && updatedMessage.isEdited) {
-                        const timeEl = msgEl.querySelector('.message-time');
-                        if (timeEl) {
-                            editedLabel = document.createElement('span');
-                            editedLabel.className = 'edited-label';
-                            editedLabel.textContent = ' (edited)';
-                            timeEl.appendChild(editedLabel);
-                        }
-                    }
+                // For all updates, recreate and replace to handle content, edits, and reactions properly
+                const nextSibling = msgEl.nextSibling;
+                msgEl.remove();
+                
+                // Temporary flag to prevent auto scroll down if not at bottom
+                const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
+                
+                appendMessage(updatedMessage);
+                const newMsgEl = messagesContainer.lastElementChild;
+                if (nextSibling) {
+                    messagesContainer.insertBefore(newMsgEl, nextSibling);
                 }
+                
+                if (isAtBottom) scrollToBottom();
             }
         }
         updateConversationPreview(updatedMessage);
@@ -930,16 +914,60 @@ function appendMessage(message) {
         contentHTML = `<div class="message-content">${escapeHTML(message.content)}</div>`;
     }
 
+    let reactionsHTML = '';
+    if (message.reactions && Object.keys(message.reactions).length > 0) {
+        const reactionCounts = {};
+        let myReaction = null;
+        for (const [uid, emoji] of Object.entries(message.reactions)) {
+            if (uid === currentUser.id.toString()) myReaction = emoji;
+            reactionCounts[emoji] = (reactionCounts[emoji] || 0) + 1;
+        }
+        
+        const reactionsList = Object.entries(reactionCounts)
+            .map(([emoji, count]) => `<span class="reaction-badge ${myReaction === emoji ? 'my-reaction' : ''}" data-emoji="${emoji}">${emoji} ${count > 1 ? count : ''}</span>`)
+            .join('');
+        reactionsHTML = `<div class="message-reactions">${reactionsList}</div>`;
+    }
+
     div.innerHTML = `
         ${replyHTML}
         ${contentHTML}
+        ${reactionsHTML}
         <div class="message-time">${formatTime(message.createdAt)}${editedHTML}</div>
         <div class="message-actions">
+            <i class="ph ph-smiley react-btn" title="React"></i>
             <i class="ph ph-arrow-u-up-left reply-btn" title="Reply"></i>
             ${isSent && message.messageType !== 'poll' ? '<i class="ph ph-pencil-simple edit-btn" title="Edit"></i>' : ''}
             <i class="ph ph-trash delete-btn" title="Delete"></i>
         </div>
     `;
+
+    const reactBtn = div.querySelector('.react-btn');
+    if (reactBtn) {
+        reactBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const msgId = message._id || div.dataset.id;
+            if (msgId) {
+                showReactionPicker(reactBtn, msgId);
+            }
+        });
+    }
+
+    const reactionBadges = div.querySelectorAll('.reaction-badge');
+    reactionBadges.forEach(badge => {
+        badge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const emoji = badge.getAttribute('data-emoji');
+            const msgId = message._id || div.dataset.id;
+            if (msgId) {
+                const isMyReaction = badge.classList.contains('my-reaction');
+                socket.emit('message:react', {
+                    messageId: msgId,
+                    emoji: isMyReaction ? '' : emoji
+                });
+            }
+        });
+    });
 
     if (message.messageType === 'poll') {
         const pollOptions = div.querySelectorAll('.poll-option');
@@ -1820,3 +1848,38 @@ if (actionRemoveMember) {
 
 // Trigger initial app startup
 initApp();
+function showReactionPicker(btnElement, msgId) {
+    const existing = document.getElementById('reaction-picker');
+    if (existing) existing.remove();
+
+    const picker = document.createElement('div');
+    picker.id = 'reaction-picker';
+    picker.className = 'reaction-picker';
+    const emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+    
+    emojis.forEach(emoji => {
+        const span = document.createElement('span');
+        span.textContent = emoji;
+        span.onclick = () => {
+            socket.emit('message:react', { messageId: msgId, emoji });
+            picker.remove();
+        };
+        picker.appendChild(span);
+    });
+
+    document.body.appendChild(picker);
+
+    const rect = btnElement.getBoundingClientRect();
+    picker.style.position = 'absolute';
+    picker.style.left = `${Math.max(10, rect.left - 80)}px`;
+    picker.style.top = `${rect.top - 50}px`;
+
+    setTimeout(() => {
+        document.addEventListener('click', function closePicker(e) {
+            if (!picker.contains(e.target)) {
+                picker.remove();
+                document.removeEventListener('click', closePicker);
+            }
+        });
+    }, 10);
+}

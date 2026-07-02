@@ -1281,3 +1281,58 @@ body {
     color: var(--text-muted);
     opacity: 0.5;
 }
+
+/* --- Message Reactions --- */
+.message-reactions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.reaction-badge {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 2px 6px;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+
+.reaction-badge:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.reaction-badge.my-reaction {
+    background: rgba(139, 92, 246, 0.3);
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+.reaction-picker {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 12px;
+    display: flex;
+    gap: 12px;
+    box-shadow: var(--shadow);
+    z-index: 1000;
+    backdrop-filter: blur(16px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.reaction-picker span {
+    font-size: 24px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    user-select: none;
+}
+
+.reaction-picker span:hover {
+    transform: scale(1.3);
+}
