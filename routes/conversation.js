@@ -94,8 +94,7 @@ router.get('/', async (req, res) => {
 
     const filters = [
       {
-        'participants.userId': currentUser.id,
-        status: { $ne: 'blocked' }
+        'participants.userId': currentUser.id
       }
     ];
 
@@ -388,6 +387,62 @@ router.post('/:id/reject', async (req, res) => {
     res.json({ success: true, conversation });
   } catch (err) {
     console.error('Reject error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Block an accepted conversation
+router.post('/:id/block', async (req, res) => {
+  const currentUser = getRequestUser(req);
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+
+    if (conversation.type !== 'private') {
+      return res.status(400).json({ message: 'Can only block private conversations directly' });
+    }
+
+    if (conversation.status === 'blocked' && conversation.blockedBy === currentUser.id) {
+      return res.status(400).json({ message: 'Already blocked' });
+    }
+
+    conversation.status = 'blocked';
+    conversation.blockedBy = currentUser.id;
+    await conversation.save();
+
+    res.json({ success: true, conversation });
+  } catch (err) {
+    console.error('Block error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Unblock a conversation
+router.post('/:id/unblock', async (req, res) => {
+  const currentUser = getRequestUser(req);
+  try {
+    const conversation = await Conversation.findById(req.params.id);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+
+    if (conversation.type !== 'private') {
+      return res.status(400).json({ message: 'Can only unblock private conversations directly' });
+    }
+
+    if (conversation.status !== 'blocked') {
+      return res.status(400).json({ message: 'Conversation is not blocked' });
+    }
+
+    if (conversation.blockedBy !== currentUser.id) {
+      return res.status(403).json({ message: 'You are not the one who blocked this conversation' });
+    }
+
+    conversation.status = 'accepted';
+    conversation.blockedBy = null;
+    await conversation.save();
+
+    res.json({ success: true, conversation });
+  } catch (err) {
+    console.error('Unblock error:', err);
     res.status(500).send('Server Error');
   }
 });

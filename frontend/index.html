@@ -155,6 +155,34 @@
             </main>
         </div>
 
+        <!-- Private Chat Info Modal -->
+        <div id="chat-info-modal" class="modal hidden">
+            <div class="modal-content" style="max-width: 400px; max-height: 90vh; display: flex; flex-direction: column;">
+                <header class="modal-header">
+                    <h3>Contact Info</h3>
+                    <button id="close-chat-info-modal"><i class="ph ph-x"></i></button>
+                </header>
+                <div class="modal-body" style="padding: 0; overflow-y: auto;">
+                    <div style="padding: 24px; text-align: center; border-bottom: 1px solid var(--border-color);">
+                        <div style="position: relative; width: 100px; height: 100px; margin: 0 auto 16px;">
+                            <div class="avatar" id="chat-info-avatar" style="width: 100%; height: 100%; font-size: 40px; margin: 0;">?</div>
+                        </div>
+                        <h2 id="chat-info-name" style="font-size: 22px; font-weight: 600; color: var(--text-color); margin-bottom: 4px;">User Name</h2>
+                        <span id="chat-info-status" style="color: #22c55e; font-size: 14px;">Online</span>
+                    </div>
+
+                    <div style="padding: 16px 24px; display: flex; flex-direction: column; gap: 12px;">
+                        <button id="action-block-chat" class="btn" style="width: 100%; justify-content: center; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444;">
+                            <i class="ph ph-prohibit"></i> <span id="block-btn-text">Block User</span>
+                        </button>
+                        <button id="action-delete-chat" class="btn" style="width: 100%; justify-content: center; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444;">
+                            <i class="ph ph-trash"></i> Delete Chat
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Group Info Modal -->
         <div id="group-info-modal" class="modal hidden">
             <div class="modal-content" style="max-width: 400px; max-height: 90vh; display: flex; flex-direction: column;">

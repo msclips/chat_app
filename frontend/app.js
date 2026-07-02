@@ -531,8 +531,14 @@ function renderConversations() {
         div.className = `conv-item ${conv._id === activeConversationId ? 'active' : ''}`;
         div.onclick = () => selectConversation(conv._id, name, conv.type === 'community');
         
-        // Show pending tag for groups
-        const pendingTag = (conv.type === 'group' && conv.groupMemberStatus === 'pending') ? '<span style="color: #f59e0b; font-size: 10px; margin-left: 5px;">(Invite)</span>' : '';
+        // Show pending or blocked tags
+        let extraTags = '';
+        if (conv.type === 'group' && conv.groupMemberStatus === 'pending') {
+            extraTags += '<span style="color: #f59e0b; font-size: 10px; margin-left: 5px;">(Invite)</span>';
+        }
+        if (conv.status === 'blocked') {
+            extraTags += '<span style="color: #ef4444; font-size: 10px; margin-left: 5px; font-weight: bold;">(Blocked)</span>';
+        }
 
         const unreadCount = conv.unreadCounts ? (conv.unreadCounts[currentUser.id.toString()] || 0) : 0;
         const badgeHTML = unreadCount > 0 ? `<div style="background-color: #22c55e; color: white; font-size: 11px; font-weight: bold; border-radius: 50%; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0 6px;">${unreadCount}</div>` : '';
@@ -548,7 +554,7 @@ function renderConversations() {
             ${avatarHTML}
             <div class="conv-info">
                 <div class="conv-name-row">
-                    <h4>${name}${pendingTag}${muteIcon}</h4>
+                    <h4>${name}${extraTags}${muteIcon}</h4>
                     <span class="conv-time">${formatDate(conv.updatedAt)}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -804,6 +810,17 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
         }
     }
     
+    let isBlockedByMe = false;
+    let isBlockedByThem = false;
+    
+    if (activeConv && activeConv.status === 'blocked') {
+        if (activeConv.blockedBy === currentUser.id) {
+            isBlockedByMe = true;
+        } else {
+            isBlockedByThem = true;
+        }
+    }
+    
     if (!canSend) {
         messageInput.placeholder = "You are not a member of this community";
         messageInput.disabled = true;
@@ -811,6 +828,16 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
         document.getElementById('send-btn').style.opacity = '0.5';
     } else if (isPendingRecipient) {
         messageInput.placeholder = "Accept message request to start chatting...";
+        messageInput.disabled = true;
+        document.getElementById('send-btn').disabled = true;
+        document.getElementById('send-btn').style.opacity = '0.5';
+    } else if (isBlockedByMe) {
+        messageInput.placeholder = "You blocked this user. Unblock to send messages.";
+        messageInput.disabled = true;
+        document.getElementById('send-btn').disabled = true;
+        document.getElementById('send-btn').style.opacity = '0.5';
+    } else if (isBlockedByThem) {
+        messageInput.placeholder = "You are blocked from sending messages to this user.";
         messageInput.disabled = true;
         document.getElementById('send-btn').disabled = true;
         document.getElementById('send-btn').style.opacity = '0.5';
@@ -1490,7 +1517,96 @@ if (chatTitleHeader) {
         if (!activeConversationId) return;
         
         const conv = conversations.find(c => c._id === activeConversationId);
-        if (!conv || (conv.type !== 'group' && conv.type !== 'community')) return;
+        if (!conv) return;
+
+        if (conv.type === 'private') {
+            const chatInfoModal = document.getElementById('chat-info-modal');
+            const otherParticipant = conv.participants.find(p => p.userId !== currentUser.id);
+            const name = otherParticipant ? otherParticipant.username : 'Deleted User';
+            
+            document.getElementById('chat-info-name').textContent = name;
+            
+            const avatarEl = document.getElementById('chat-info-avatar');
+            if (conv.photoUrl) {
+                avatarEl.innerHTML = `<img src="${conv.photoUrl}" alt="${name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarEl.style.background = '';
+            } else {
+                avatarEl.innerHTML = name.charAt(0).toUpperCase();
+            }
+
+            // Block/Unblock chat logic
+            const blockBtn = document.getElementById('action-block-chat');
+            const blockBtnText = document.getElementById('block-btn-text');
+            const isBlockedByMe = conv.status === 'blocked' && conv.blockedBy === currentUser.id;
+            
+            if (isBlockedByMe) {
+                blockBtnText.textContent = 'Unblock User';
+                blockBtn.innerHTML = '<i class="ph ph-check-circle"></i> <span id="block-btn-text">Unblock User</span>';
+                blockBtn.style.color = '#22c55e';
+                blockBtn.style.borderColor = '#22c55e';
+                blockBtn.style.background = 'rgba(34, 197, 94, 0.05)';
+                
+                blockBtn.onclick = async () => {
+                    try {
+                        const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/unblock`, {
+                            method: 'POST',
+                            headers: getHeaders()
+                        });
+                        const data = await response.json();
+                        if (response.ok) {
+                            alert('User unblocked successfully.');
+                            conv.status = 'accepted';
+                            conv.blockedBy = null;
+                            renderConversations();
+                            selectConversation(activeConversationId, name); // Refresh chat UI
+                            chatInfoModal.classList.add('hidden');
+                        } else {
+                            alert(data.message || 'Failed to unblock user.');
+                        }
+                    } catch (err) {
+                        console.error('Unblock error:', err);
+                    }
+                };
+            } else {
+                blockBtn.innerHTML = '<i class="ph ph-prohibit"></i> <span id="block-btn-text">Block User</span>';
+                blockBtn.style.color = '#ef4444';
+                blockBtn.style.borderColor = '#ef4444';
+                blockBtn.style.background = 'rgba(239, 68, 68, 0.05)';
+                
+                blockBtn.onclick = async () => {
+                    if (confirm('Are you sure you want to block this user?')) {
+                        try {
+                            const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/block`, {
+                                method: 'POST',
+                                headers: getHeaders()
+                            });
+                            const data = await response.json();
+                            if (response.ok) {
+                                alert('User blocked successfully.');
+                                conv.status = 'blocked';
+                                conv.blockedBy = currentUser.id;
+                                renderConversations();
+                                selectConversation(activeConversationId, name); // Refresh chat UI
+                                chatInfoModal.classList.add('hidden');
+                            } else {
+                                alert(data.message || 'Failed to block user.');
+                            }
+                        } catch (err) {
+                            console.error('Block error:', err);
+                        }
+                    }
+                };
+            }
+            
+            document.getElementById('action-delete-chat').onclick = () => {
+                alert('Delete entire chat functionality is not yet implemented.');
+            };
+
+            chatInfoModal.classList.remove('hidden');
+            return;
+        }
+
+        if (conv.type !== 'group' && conv.type !== 'community') return;
 
         try {
             const res = await fetch(`${API_URL}/api/conversations/${activeConversationId}/groupInfo`, {
@@ -1607,6 +1723,14 @@ if (groupInfoSearch) {
 if (closeGroupInfoModal) {
     closeGroupInfoModal.addEventListener('click', () => {
         groupInfoModal.classList.add('hidden');
+    });
+}
+
+const closeChatInfoModal = document.getElementById('close-chat-info-modal');
+if (closeChatInfoModal) {
+    closeChatInfoModal.addEventListener('click', () => {
+        const chatInfoModal = document.getElementById('chat-info-modal');
+        if (chatInfoModal) chatInfoModal.classList.add('hidden');
     });
 }
 
