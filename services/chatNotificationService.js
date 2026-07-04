@@ -191,10 +191,13 @@ const sendChatNotification = async ({
 
             // Build the body string containing only their unread messages
             const description = buildUnreadNotificationBody(unreadForUser, chatType, senderName, chatData);
+            user.computed_description = description;
 
             const dataPayload = {
                 type: "chat_message",
                 sender_name: senderName || '',
+                action_reply: 'true',
+                action_mark_read: 'true',
                 ...convertObjectValuesToString(chatData)
             };
 
@@ -209,9 +212,14 @@ const sendChatNotification = async ({
             // iOS: thread-id groups notifications per conversation
             const apnsConfig = conversationId ? {
                 payload: {
-                    aps: { 'thread-id': conversationId },
+                    aps: { 
+                        'thread-id': conversationId,
+                        category: 'MESSAGE_ACTIONS' // Allows iOS client to map to local action buttons
+                    },
                 },
             } : undefined;
+
+
 
             // send to Android if token available
             if (user.android_token && !uniqueTokens.has(user.android_token)) {
@@ -331,7 +339,7 @@ const sendChatNotification = async ({
         const notificationRows = userIds.map(user => ({
             user_id: user.user_id ?? null,
             notification_title: title,
-            notification_details: description,
+            notification_details: user.computed_description || 'New message',
             notification_type: 'chat_message',
             image_object: JSON.stringify(chatData),
             is_viewed: 0,
