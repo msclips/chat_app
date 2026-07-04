@@ -183,7 +183,7 @@ function showChatView() {
     chatView.classList.remove('hidden');
     document.getElementById('current-username').textContent = currentUser.user_name;
     document.getElementById('current-user-avatar').textContent = currentUser.user_name.charAt(0).toUpperCase();
-    
+
     initSocket();
     fetchConversations();
     fetchCommunities();
@@ -246,16 +246,16 @@ function initSocket() {
                 // For all updates, recreate and replace to handle content, edits, and reactions properly
                 const nextSibling = msgEl.nextSibling;
                 msgEl.remove();
-                
+
                 // Temporary flag to prevent auto scroll down if not at bottom
                 const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 50;
-                
+
                 appendMessage(updatedMessage);
                 const newMsgEl = messagesContainer.lastElementChild;
                 if (nextSibling) {
                     messagesContainer.insertBefore(newMsgEl, nextSibling);
                 }
-                
+
                 if (isAtBottom) scrollToBottom();
             }
         }
@@ -338,7 +338,7 @@ function initSocket() {
                     }
                 }
             }
-            
+
             if (incrementUnread && activeConversationId !== conversationId && lastMessage) {
                 if (!conv.unreadCounts) conv.unreadCounts = {};
                 conv.unreadCounts[currentUser.id.toString()] = (conv.unreadCounts[currentUser.id.toString()] || 0) + 1;
@@ -389,7 +389,7 @@ function initSocket() {
             if (groupInfoAvatar && !data.photoUrl) groupInfoAvatar.textContent = data.name.charAt(0).toUpperCase();
             if (chatWithName) chatWithName.textContent = data.name;
         }
-        
+
         // Find by groupId if it's there, or conversationId if provided
         const conv = conversations.find(c => c.groupId === data.groupId || c._id === data.conversationId);
         if (conv) {
@@ -436,14 +436,14 @@ async function fetchConversations() {
             headers: getHeaders()
         });
         conversations = await response.json();
-        
+
         conversations.forEach(conv => {
             const me = conv.participants.find(p => p.userId === currentUser.id);
             muteStates[conv._id] = me?.muteUntil || null;
         });
 
         renderConversations();
-        
+
         if (!activeConversationId && conversations.length > 0) {
             const firstConv = conversations[0];
             let name = 'Group Chat';
@@ -524,13 +524,13 @@ function renderConversations() {
                 lastMsg = 'New message...';
             }
         }
-        
+
         const muteIcon = isMuted(conv._id) ? '<i class="ph ph-bell-slash mute-indicator" title="Muted"></i>' : '';
 
         const div = document.createElement('div');
         div.className = `conv-item ${conv._id === activeConversationId ? 'active' : ''}`;
         div.onclick = () => selectConversation(conv._id, name, conv.type === 'community');
-        
+
         // Show pending or blocked tags
         let extraTags = '';
         if (conv.type === 'group' && conv.groupMemberStatus === 'pending') {
@@ -569,7 +569,7 @@ function renderConversations() {
 
 function renderGroupUsers(filter = '') {
     groupUsersListContainer.innerHTML = '';
-    const filteredUsers = allUsers.filter(u => 
+    const filteredUsers = allUsers.filter(u =>
         u.id !== currentUser.id && u.user_name.toLowerCase().includes(filter.toLowerCase())
     );
 
@@ -584,9 +584,9 @@ function renderGroupUsers(filter = '') {
         div.style.display = 'flex';
         div.style.justifyContent = 'space-between';
         div.style.alignItems = 'center';
-        
+
         const isSelected = selectedGroupMembers.has(user.id);
-        
+
         div.innerHTML = `
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div class="avatar">${user.user_name.charAt(0).toUpperCase()}</div>
@@ -594,7 +594,7 @@ function renderGroupUsers(filter = '') {
             </div>
             <input type="checkbox" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
         `;
-        
+
         div.addEventListener('click', (e) => {
             if (e.target.tagName !== 'INPUT') {
                 const cb = div.querySelector('input');
@@ -606,7 +606,7 @@ function renderGroupUsers(filter = '') {
                 selectedGroupMembers.delete(user.id);
             }
         });
-        
+
         groupUsersListContainer.appendChild(div);
     });
 }
@@ -619,7 +619,7 @@ function renderCommunities() {
     }
     communities.forEach(comm => {
         const name = comm.group_name;
-        
+
         // Use group_id as conversationId mapping for mute state? We need the actual conv id.
         // For communities, the communityId (groupId) might be mapped to convId after init, 
         // but for render list, we don't have conv id yet unless fetched. We can rely on `muteStates` if mapped.
@@ -630,7 +630,7 @@ function renderCommunities() {
         const div = document.createElement('div');
         div.className = `conv-item ${comm.group_id === activeCommunityId ? 'active' : ''}`;
         div.onclick = () => selectCommunity(comm.group_id, name);
-        
+
         div.innerHTML = `
             <div class="avatar" style="background: linear-gradient(135deg, #f59e0b, #d97706)">${name.charAt(0).toUpperCase()}</div>
             <div class="conv-info">
@@ -646,7 +646,7 @@ function renderCommunities() {
 
 function renderUsers(filter = '') {
     usersListContainer.innerHTML = '';
-    const filteredUsers = allUsers.filter(u => 
+    const filteredUsers = allUsers.filter(u =>
         u.user_name.toLowerCase().includes(filter.toLowerCase())
     );
 
@@ -659,7 +659,7 @@ function renderUsers(filter = '') {
         const div = document.createElement('div');
         div.className = 'user-item';
         div.onclick = () => startConversation(user.id, user.user_name);
-        
+
         div.innerHTML = `
             <div class="avatar">${user.user_name.charAt(0).toUpperCase()}</div>
             <div class="user-name">${user.user_name}</div>
@@ -678,14 +678,14 @@ async function fetchMessages(conversationId) {
             headers: getHeaders(),
             signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
-        
+
         const messages = await response.json();
         messagesContainer.innerHTML = '';
-        
+
         if (messages.length === 0) {
             messagesContainer.innerHTML = '<div class="empty-messages">No messages yet. Say hello!</div>';
         } else {
@@ -706,9 +706,9 @@ async function startConversation(participantId, username) {
             headers: getHeaders(),
             body: JSON.stringify({ participantId })
         });
-        
+
         const conversation = await response.json();
-        
+
         if (response.ok) {
             newChatModal.classList.add('hidden');
             activeConversationId = conversation._id;
@@ -725,13 +725,13 @@ async function startConversation(participantId, username) {
 function selectConversation(id, name, isCommunity = false, canSend = true) {
     activeConversationId = id;
     if (!isCommunity) activeCommunityId = null;
-    
+
     chatWithName.textContent = name;
-    
+
     // Look up the conversation to get photoUrl
     const conv = conversations.find(c => c._id === id);
     const chatAvatarEl = document.getElementById('chat-avatar');
-    
+
     if (conv && conv.photoUrl) {
         chatAvatarEl.innerHTML = `<img src="${conv.photoUrl}" alt="${name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
         chatAvatarEl.style.background = '';
@@ -743,7 +743,7 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
             chatAvatarEl.style.background = '';
         }
     }
-    
+
     if (isCommunity) {
         document.querySelector('.status-text').textContent = 'Public Community';
     } else {
@@ -764,14 +764,14 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
 
     noChatSelected.classList.add('hidden');
     activeChat.classList.remove('hidden');
-    
+
     // Clear reply and edit state on chat switch
     cancelReply();
     cancelEdit();
-    
+
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
-    
+
     // Clear unread badge locally and tell server
     const activeConv = conversations.find(c => c._id === id);
     if (activeConv) {
@@ -783,16 +783,16 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
             socket.emit('messages:read', { conversationId: id, messageId: lastMsgId });
         }
     }
-    
+
     // Manage Accept / Reject banners
     const requestBanner = document.getElementById('request-banner');
     const waitingBanner = document.getElementById('waiting-banner');
-    
+
     requestBanner.classList.add('hidden');
     waitingBanner.classList.add('hidden');
-    
+
     let isPendingRecipient = false;
-    
+
     if (!isCommunity) {
         const activeConv = conversations.find(c => c._id === id);
         if (activeConv && activeConv.type === 'private' && activeConv.status === 'pending') {
@@ -809,10 +809,10 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
             requestBanner.classList.remove('hidden');
         }
     }
-    
+
     let isBlockedByMe = false;
     let isBlockedByThem = false;
-    
+
     if (activeConv && activeConv.status === 'blocked') {
         if (activeConv.blockedBy === currentUser.id) {
             isBlockedByMe = true;
@@ -820,7 +820,7 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
             isBlockedByThem = true;
         }
     }
-    
+
     if (!canSend) {
         messageInput.placeholder = "You are not a member of this community";
         messageInput.disabled = true;
@@ -883,20 +883,28 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
 async function selectCommunity(groupId, name) {
     try {
         activeCommunityId = groupId;
-        
+
         const response = await fetch(`${API_URL}/api/communities/${groupId}/init`, {
             method: 'POST',
             headers: getHeaders()
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
             activeConversationId = data.conversation._id;
-            
+
             // Populate mute state for community conversation if not fetched yet
             const me = data.conversation.participants.find(p => p.userId === currentUser.id);
             muteStates[activeConversationId] = me?.muteUntil || null;
+
+            // Ensure the conversation is in our local array so the header click works
+            const existingConvIdx = conversations.findIndex(c => c._id === activeConversationId);
+            if (existingConvIdx >= 0) {
+                conversations[existingConvIdx] = data.conversation;
+            } else {
+                conversations.push(data.conversation);
+            }
 
             selectConversation(data.conversation._id, name, true, data.isMember);
         } else {
@@ -912,9 +920,9 @@ function appendMessage(message) {
     const div = document.createElement('div');
     div.className = `message ${isSent ? 'sent' : 'received'}`;
     if (message._id) div.dataset.id = message._id;
-    
+
     const sName = message.senderName || (isSent ? currentUser.user_name : chatWithName.textContent);
-    
+
     let replyHTML = '';
     if (message.replyTo) {
         replyHTML = `
@@ -924,7 +932,7 @@ function appendMessage(message) {
             </div>
         `;
     }
-    
+
     let editedHTML = message.isEdited ? '<span class="edited-label"> (edited)</span>' : '';
 
     let contentHTML = '';
@@ -938,14 +946,14 @@ function appendMessage(message) {
             const voteCount = opt.votes.length;
             const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
             const hasVoted = opt.votes.includes(currentUser.id);
-            
+
             let votersHTML = '';
             if (showVoters && voteCount > 0) {
                 const voterNames = opt.votes.map(vId => {
                     const u = allUsers.find(user => user.id === vId);
                     return u ? u.user_name : 'User ' + vId;
                 });
-                
+
                 votersHTML = `
                 <div class="poll-voters">
                     <div style="font-weight: 600; margin-bottom: 4px; color: var(--primary-light);">Voters:</div>
@@ -986,7 +994,7 @@ function appendMessage(message) {
             if (uid === currentUser.id.toString()) myReaction = emoji;
             reactionCounts[emoji] = (reactionCounts[emoji] || 0) + 1;
         }
-        
+
         const reactionsList = Object.entries(reactionCounts)
             .map(([emoji, count]) => `<span class="reaction-badge ${myReaction === emoji ? 'my-reaction' : ''}" data-emoji="${emoji}">${emoji} ${count > 1 ? count : ''}</span>`)
             .join('');
@@ -1048,7 +1056,7 @@ function appendMessage(message) {
                     // Collect all currently voted options
                     const allVoted = Array.from(div.querySelectorAll('.poll-option.voted'))
                         .map(el => el.getAttribute('data-option-id'));
-                    
+
                     if (isVoted) {
                         newOptionIds = allVoted.filter(id => id !== optionId);
                     } else {
@@ -1071,7 +1079,7 @@ function appendMessage(message) {
             });
         });
     }
-    
+
     const replyBtn = div.querySelector('.reply-btn');
     if (replyBtn) {
         replyBtn.addEventListener('click', () => {
@@ -1126,12 +1134,12 @@ function appendMessage(message) {
             }
 
             socket.emit('message:delete', { messageId: msgId, deleteType });
-            
+
             // Optimistically remove from UI
             div.remove();
         });
     }
-    
+
     messagesContainer.appendChild(div);
 }
 
@@ -1175,15 +1183,15 @@ messageForm.addEventListener('submit', (e) => {
             content: replyingToMessage.content
         } : null
     });
-    
+
     messagesContainer.lastElementChild.setAttribute('data-temp-id', tempId);
     messagesContainer.lastElementChild.classList.add('pending');
 
     socket.emit('message:send', messageData);
     messageInput.value = '';
-    
+
     cancelReply();
-    
+
     scrollToBottom();
 });
 
@@ -1215,7 +1223,7 @@ if (newGroupImageUpload) {
     newGroupImageUpload.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
+
         if (!file.type.startsWith('image/')) {
             alert('Please select a valid image file');
             return;
@@ -1275,14 +1283,14 @@ if (createGroupSubmitBtn) {
     createGroupSubmitBtn.addEventListener('click', () => {
         const name = groupNameInput.value.trim();
         if (!name) return alert('Group name is required.');
-        
+
         socket.emit('group:create', {
             name,
             description: groupDescInput.value.trim(),
             photoUrl: newGroupPhotoUrl,
             initialMembers: Array.from(selectedGroupMembers)
         });
-        
+
         newGroupModal.classList.add('hidden');
     });
 }
@@ -1406,7 +1414,7 @@ submitPollBtn.addEventListener('click', () => {
             content: replyingToMessage.content
         } : null
     });
-    
+
     messagesContainer.lastElementChild.setAttribute('data-temp-id', tempId);
     messagesContainer.lastElementChild.classList.add('pending');
 
@@ -1447,7 +1455,7 @@ function escapeHTML(str) {
 document.getElementById('btn-accept').addEventListener('click', async () => {
     if (!activeConversationId) return;
     const conv = conversations.find(c => c._id === activeConversationId);
-    
+
     if (conv && conv.type === 'group') {
         socket.emit('group:approve_request', { groupId: conv.groupId, status: 'approved' });
         conv.groupMemberStatus = 'approved';
@@ -1464,7 +1472,7 @@ document.getElementById('btn-accept').addEventListener('click', async () => {
         if (response.ok) {
             // Update the status of the conversation locally
             if (conv) conv.status = 'accepted';
-            
+
             // Re-trigger selectConversation to refresh input state and fetch messages
             selectConversation(activeConversationId, chatWithName.textContent);
         } else {
@@ -1478,7 +1486,7 @@ document.getElementById('btn-accept').addEventListener('click', async () => {
 document.getElementById('btn-reject').addEventListener('click', async () => {
     if (!activeConversationId) return;
     const conv = conversations.find(c => c._id === activeConversationId);
-    
+
     if (!confirm('Are you sure you want to reject this request? The sender will be blocked and this chat will be hidden.')) return;
 
     if (conv && conv.type === 'group') {
@@ -1501,7 +1509,7 @@ document.getElementById('btn-reject').addEventListener('click', async () => {
             // Remove the conversation locally
             conversations = conversations.filter(c => c._id !== activeConversationId);
             renderConversations();
-            
+
             // Clear current chat view
             activeConversationId = null;
             activeChat.classList.add('hidden');
@@ -1540,7 +1548,7 @@ let currentGroupMembers = [];
 if (chatTitleHeader) {
     chatTitleHeader.addEventListener('click', async () => {
         if (!activeConversationId) return;
-        
+
         const conv = conversations.find(c => c._id === activeConversationId);
         if (!conv) return;
 
@@ -1548,9 +1556,9 @@ if (chatTitleHeader) {
             const chatInfoModal = document.getElementById('chat-info-modal');
             const otherParticipant = conv.participants.find(p => p.userId !== currentUser.id);
             const name = otherParticipant ? otherParticipant.username : 'Deleted User';
-            
+
             document.getElementById('chat-info-name').textContent = name;
-            
+
             const avatarEl = document.getElementById('chat-info-avatar');
             if (conv.photoUrl) {
                 avatarEl.innerHTML = `<img src="${conv.photoUrl}" alt="${name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
@@ -1563,14 +1571,14 @@ if (chatTitleHeader) {
             const blockBtn = document.getElementById('action-block-chat');
             const blockBtnText = document.getElementById('block-btn-text');
             const isBlockedByMe = conv.status === 'blocked' && conv.blockedBy === currentUser.id;
-            
+
             if (isBlockedByMe) {
                 blockBtnText.textContent = 'Unblock User';
                 blockBtn.innerHTML = '<i class="ph ph-check-circle"></i> <span id="block-btn-text">Unblock User</span>';
                 blockBtn.style.color = '#22c55e';
                 blockBtn.style.borderColor = '#22c55e';
                 blockBtn.style.background = 'rgba(34, 197, 94, 0.05)';
-                
+
                 blockBtn.onclick = async () => {
                     try {
                         const response = await fetch(`${API_URL}/api/conversations/${activeConversationId}/unblock`, {
@@ -1597,7 +1605,7 @@ if (chatTitleHeader) {
                 blockBtn.style.color = '#ef4444';
                 blockBtn.style.borderColor = '#ef4444';
                 blockBtn.style.background = 'rgba(239, 68, 68, 0.05)';
-                
+
                 blockBtn.onclick = async () => {
                     if (confirm('Are you sure you want to block this user?')) {
                         try {
@@ -1622,7 +1630,7 @@ if (chatTitleHeader) {
                     }
                 };
             }
-            
+
             document.getElementById('action-delete-chat').onclick = () => {
                 alert('Delete entire chat functionality is not yet implemented.');
             };
@@ -1638,11 +1646,11 @@ if (chatTitleHeader) {
                 headers: getHeaders()
             });
             const data = await res.json();
-            
+
             if (res.ok) {
                 currentGroupInfo = data.group;
                 currentGroupMembers = data.members;
-                
+
                 if (data.group.photoUrl) {
                     if (groupInfoAvatar) {
                         groupInfoAvatar.innerHTML = `<img src="${data.group.photoUrl}" alt="${data.group.name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
@@ -1652,26 +1660,38 @@ if (chatTitleHeader) {
                         groupInfoAvatar.innerHTML = data.group.name.charAt(0).toUpperCase();
                     }
                 }
-                
+
                 if (groupInfoName) groupInfoName.value = data.group.name;
                 if (groupInfoCount) groupInfoCount.textContent = `${data.members.length} participants`;
-                
+
                 const myMembership = data.members.find(m => m.userId == currentUser.id);
                 const isAdmin = myMembership && myMembership.role === 'admin';
-                
+
                 if (groupInfoName) groupInfoName.disabled = !isAdmin;
                 if (editGroupNameBtn) editGroupNameBtn.style.display = isAdmin ? 'block' : 'none';
                 if (addParticipantBtn) addParticipantBtn.style.display = isAdmin ? 'flex' : 'none';
-                
+
                 const editGroupImageBtn = document.getElementById('edit-group-image-btn');
                 if (editGroupImageBtn) editGroupImageBtn.style.display = isAdmin ? 'flex' : 'none';
-                
+
                 if (data.group.isCommunity) {
                     if (editGroupNameBtn) editGroupNameBtn.style.display = 'none';
                     if (addParticipantBtn) addParticipantBtn.style.display = 'none';
                     if (editGroupImageBtn) editGroupImageBtn.style.display = 'none';
+                    
+                    document.querySelector('#group-info-modal .modal-header h3').textContent = 'Community Info';
+                    const adminsHeader = document.querySelector('#group-admins-list').previousElementSibling;
+                    if (adminsHeader) adminsHeader.textContent = 'Community Admins';
+                    
+                    if (exitGroupBtn) exitGroupBtn.innerHTML = '<i class="ph ph-sign-out"></i> Exit Community';
+                } else {
+                    document.querySelector('#group-info-modal .modal-header h3').textContent = 'Group Info';
+                    const adminsHeader = document.querySelector('#group-admins-list').previousElementSibling;
+                    if (adminsHeader) adminsHeader.textContent = 'Group Admins';
+                    
+                    if (exitGroupBtn) exitGroupBtn.innerHTML = '<i class="ph ph-sign-out"></i> Exit Group';
                 }
-                
+
                 renderGroupInfoMembers();
                 if (groupInfoModal) groupInfoModal.classList.remove('hidden');
             } else {
@@ -1687,27 +1707,28 @@ function renderGroupInfoMembers(filter = '') {
     if (!groupAdminsList || !groupParticipantsList) return;
     groupAdminsList.innerHTML = '';
     groupParticipantsList.innerHTML = '';
-    
+
     const filteredMembers = currentGroupMembers.filter(m => m.username.toLowerCase().includes(filter.toLowerCase()));
-    
+
     filteredMembers.forEach(member => {
         const div = document.createElement('div');
         div.className = 'user-item';
         div.style.display = 'flex';
         div.style.justifyContent = 'space-between';
         div.style.alignItems = 'center';
-        
+
         let roleBadge = '';
         if (member.role === 'admin') {
-            roleBadge = '<span style="font-size: 10px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; padding: 2px 6px; border-radius: 4px; font-weight: 600;">Admin</span>';
+            const roleName = currentGroupInfo.isCommunity ? 'Community Admin' : 'Group Admin';
+            roleBadge = `<span style="font-size: 10px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${roleName}</span>`;
         } else if (member.role === 'member') {
             roleBadge = '<span style="font-size: 10px; background: rgba(107, 114, 128, 0.1); color: var(--text-muted); padding: 2px 6px; border-radius: 4px;">User</span>';
         }
-        
+
         let removeBtn = '';
         const myMembership = currentGroupMembers.find(m => m.userId == currentUser.id);
         const isAdmin = myMembership && myMembership.role === 'admin';
-        
+
         div.innerHTML = `
             <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
                 <div class="avatar">${member.username.charAt(0).toUpperCase()}</div>
@@ -1721,16 +1742,16 @@ function renderGroupInfoMembers(filter = '') {
                 </div>
             </div>
         `;
-        
+
         if (isAdmin && member.userId != currentUser.id && !currentGroupInfo.isCommunity) {
-             div.style.cursor = 'pointer';
-             div.addEventListener('click', () => {
-                 if (typeof openMemberActionModal === 'function') {
-                     openMemberActionModal(member);
-                 }
-             });
+            div.style.cursor = 'pointer';
+            div.addEventListener('click', () => {
+                if (typeof openMemberActionModal === 'function') {
+                    openMemberActionModal(member);
+                }
+            });
         }
-        
+
         if (member.role === 'admin') {
             groupAdminsList.appendChild(div);
         } else {
@@ -1787,7 +1808,7 @@ if (submitEditGroupNameBtn) {
         const newName = editGroupNameInput.value.trim();
         if (newName && newName !== currentGroupInfo.name) {
             if (socket) socket.emit('group:edit', { groupId: currentGroupInfo.groupId, name: newName });
-            
+
             // Optimistic update
             currentGroupInfo.name = newName;
             if (groupInfoName) groupInfoName.value = newName;
@@ -1842,9 +1863,9 @@ if (groupImageUpload) {
         reader.onload = (event) => {
             const base64Image = event.target.result;
             if (socket && currentGroupInfo) {
-                socket.emit('group:editImage', { 
-                    groupId: currentGroupInfo.groupId, 
-                    base64Image 
+                socket.emit('group:editImage', {
+                    groupId: currentGroupInfo.groupId,
+                    base64Image
                 });
             }
         };
@@ -1883,8 +1904,8 @@ if (closeAddParticipantModal2) {
 function renderAddParticipantList2(filter = '') {
     if (!addParticipantList2) return;
     addParticipantList2.innerHTML = '';
-    const filteredUsers = allUsers.filter(u => 
-        u.id != currentUser.id && 
+    const filteredUsers = allUsers.filter(u =>
+        u.id != currentUser.id &&
         u.user_name.toLowerCase().includes(filter.toLowerCase()) &&
         !currentGroupMembers.some(m => m.userId == u.id)
     );
@@ -1900,9 +1921,9 @@ function renderAddParticipantList2(filter = '') {
         div.style.display = 'flex';
         div.style.justifyContent = 'space-between';
         div.style.alignItems = 'center';
-        
+
         const isSelected = groupAddCandidates2.has(user.id);
-        
+
         div.innerHTML = `
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div class="avatar">${user.user_name.charAt(0).toUpperCase()}</div>
@@ -1910,7 +1931,7 @@ function renderAddParticipantList2(filter = '') {
             </div>
             <input type="checkbox" ${isSelected ? 'checked' : ''} style="cursor: pointer;">
         `;
-        
+
         div.addEventListener('click', (e) => {
             if (e.target.tagName !== 'INPUT') {
                 const cb = div.querySelector('input');
@@ -1922,7 +1943,7 @@ function renderAddParticipantList2(filter = '') {
                 groupAddCandidates2.delete(user.id);
             }
         });
-        
+
         addParticipantList2.appendChild(div);
     });
 }
@@ -1963,7 +1984,7 @@ let currentActionMember = null;
 function openMemberActionModal(member) {
     currentActionMember = member;
     if (memberActionName) memberActionName.textContent = `Manage ${member.username}`;
-    
+
     if (actionMakeAdmin) actionMakeAdmin.style.display = member.role === 'admin' ? 'none' : 'flex';
     if (actionBlockMember) actionBlockMember.style.display = member.status === 'blocked' ? 'none' : 'flex';
 
@@ -1988,7 +2009,7 @@ if (actionMakeAdmin) {
 if (actionBlockMember) {
     actionBlockMember.addEventListener('click', () => {
         if (currentActionMember && currentGroupInfo) {
-            if(confirm(`Block ${currentActionMember.username} from the group?`)) {
+            if (confirm(`Block ${currentActionMember.username} from the group?`)) {
                 if (socket) socket.emit('group:admin_block_member', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
                 memberActionModal.classList.add('hidden');
             }
@@ -1999,7 +2020,7 @@ if (actionBlockMember) {
 if (actionRemoveMember) {
     actionRemoveMember.addEventListener('click', () => {
         if (currentActionMember && currentGroupInfo) {
-            if(confirm(`Remove ${currentActionMember.username} from the group?`)) {
+            if (confirm(`Remove ${currentActionMember.username} from the group?`)) {
                 if (socket) socket.emit('group:admin_remove_member', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
                 memberActionModal.classList.add('hidden');
             }
@@ -2017,7 +2038,7 @@ function showReactionPicker(btnElement, msgId) {
     picker.id = 'reaction-picker';
     picker.className = 'reaction-picker';
     const emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-    
+
     emojis.forEach(emoji => {
         const span = document.createElement('span');
         span.textContent = emoji;

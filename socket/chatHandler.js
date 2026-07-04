@@ -72,8 +72,8 @@ function chatHandler(io) {
         if (!conversation) return;
         console.log(`[MESSAGE] Conversation:`, conversation);
         if (conversation.type === 'community') {
-            const membership = await GroupUser  .findOne({
-                where: { group_id: conversation.communityId, user_id: userId }
+            const membership = await GroupUser.findOne({
+                where: { group_id: conversation.communityId, user_id: userId, status: 1, is_active: 1 }
             });
 
             if (!membership) {

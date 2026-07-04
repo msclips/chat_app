@@ -181,7 +181,7 @@ router.get('/', async (req, res) => {
 
           // Unread count for the current user: messages after their lastReadMessageId
           const myMember = members.find(m => m.userId === currentUser.id);
-          
+
           let unreadQuery = {
             conversationId: conv._id,
             senderId: { $ne: currentUser.id }, // exclude own messages
@@ -216,7 +216,7 @@ router.get('/', async (req, res) => {
       if (conv.type === 'private') {
         const myParticipant = conv.participants?.find(p => p.userId === currentUser.id);
         const otherParticipant = conv.participants?.find(p => p.userId !== currentUser.id);
-        
+
         if (otherParticipant) {
           try {
             const otherUser = await User.findByPk(otherParticipant.userId, { attributes: ['file_path'] });
@@ -228,7 +228,7 @@ router.get('/', async (req, res) => {
             console.error('Failed to get other user photoUrl', e);
           }
         }
-        
+
         if (myParticipant?.lastRead) {
           unreadQuery.createdAt = { $gt: myParticipant.lastRead };
         }
@@ -266,7 +266,7 @@ router.get('/', async (req, res) => {
       if (conv.lastMessage) {
         const isDeletedForEveryone = conv.lastMessage.delete_type === 2;
         const isDeletedForMe = conv.lastMessage.deleted_by && conv.lastMessage.deleted_by.includes(currentUser.id);
-        
+
         if (isDeletedForEveryone || isDeletedForMe) {
           const actualLastMsg = await Message.findOne({
             conversationId: conv._id,
@@ -456,7 +456,7 @@ router.get('/:id/groupInfo', async (req, res) => {
 
     let groupDetails = {};
     let members = [];
-    
+
     // Fetch all user details to map names
     const allUsers = await User.findAll({ attributes: ['user_id', 'user_name'] });
     const userMap = {};
@@ -466,7 +466,7 @@ router.get('/:id/groupInfo', async (req, res) => {
       const Group = require('../models/Group');
       const group = await Group.findById(conversation.groupId);
       if (!group) return res.status(404).json({ message: 'Group not found' });
-      
+
       groupDetails = {
         name: group.name,
         description: group.description,
@@ -488,7 +488,7 @@ router.get('/:id/groupInfo', async (req, res) => {
       const NgoMaster = require('../models/NgoMaster');
       const group = await GroupMaster.findByPk(conversation.communityId);
       if (!group) return res.status(404).json({ message: 'Community not found' });
-      
+
       let photoUrl = group.image_path || null;
       if (group.ngo_id) {
         try {
@@ -501,7 +501,7 @@ router.get('/:id/groupInfo', async (req, res) => {
           console.error('Failed to get community info ngo logo path', e);
         }
       }
-      
+
       groupDetails = {
         name: group.group_name,
         description: group.description,
@@ -510,7 +510,7 @@ router.get('/:id/groupInfo', async (req, res) => {
         isCommunity: true
       };
 
-      const memberships = await GroupUser.findAll({ where: { group_id: group.group_id, is_active: 1 } });
+      const memberships = await GroupUser.findAll({ where: { group_id: group.group_id, status: 1, is_active: 1 } });
       members = memberships.map(m => ({
         userId: m.user_id,
         username: userMap[m.user_id] || 'User ' + m.user_id,
