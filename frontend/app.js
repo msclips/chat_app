@@ -826,26 +826,51 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
         messageInput.disabled = true;
         document.getElementById('send-btn').disabled = true;
         document.getElementById('send-btn').style.opacity = '0.5';
+        if (createPollBtn) {
+            createPollBtn.disabled = true;
+            createPollBtn.style.opacity = '0.5';
+            createPollBtn.style.pointerEvents = 'none';
+        }
     } else if (isPendingRecipient) {
         messageInput.placeholder = "Accept message request to start chatting...";
         messageInput.disabled = true;
         document.getElementById('send-btn').disabled = true;
         document.getElementById('send-btn').style.opacity = '0.5';
+        if (createPollBtn) {
+            createPollBtn.disabled = true;
+            createPollBtn.style.opacity = '0.5';
+            createPollBtn.style.pointerEvents = 'none';
+        }
     } else if (isBlockedByMe) {
         messageInput.placeholder = "You blocked this user. Unblock to send messages.";
         messageInput.disabled = true;
         document.getElementById('send-btn').disabled = true;
         document.getElementById('send-btn').style.opacity = '0.5';
+        if (createPollBtn) {
+            createPollBtn.disabled = true;
+            createPollBtn.style.opacity = '0.5';
+            createPollBtn.style.pointerEvents = 'none';
+        }
     } else if (isBlockedByThem) {
         messageInput.placeholder = "You are blocked from sending messages to this user.";
         messageInput.disabled = true;
         document.getElementById('send-btn').disabled = true;
         document.getElementById('send-btn').style.opacity = '0.5';
+        if (createPollBtn) {
+            createPollBtn.disabled = true;
+            createPollBtn.style.opacity = '0.5';
+            createPollBtn.style.pointerEvents = 'none';
+        }
     } else {
         messageInput.placeholder = "Type a message...";
         messageInput.disabled = false;
         document.getElementById('send-btn').disabled = false;
         document.getElementById('send-btn').style.opacity = '1';
+        if (createPollBtn) {
+            createPollBtn.disabled = false;
+            createPollBtn.style.opacity = '1';
+            createPollBtn.style.pointerEvents = 'auto';
+        }
     }
 
     document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
