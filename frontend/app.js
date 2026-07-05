@@ -229,6 +229,16 @@ function initSocket() {
         updateConversationPreview(message);
     });
 
+    socket.on('messages:read_receipt', ({ conversationId, userId, readAt }) => {
+        if (conversationId === activeConversationId) {
+            // Find all sent messages in this conversation and turn their ticks blue
+            const ticks = document.querySelectorAll('.message.sent .message-status');
+            ticks.forEach(tick => {
+                tick.style.color = '#3b82f6'; // Blue color
+            });
+        }
+    });
+
     socket.on('message:delivered', ({ tempId, message }) => {
         const tempMsg = document.querySelector(`[data-temp-id="${tempId}"]`);
         if (tempMsg) {
@@ -1005,7 +1015,10 @@ function appendMessage(message) {
         ${replyHTML}
         ${contentHTML}
         ${reactionsHTML}
-        <div class="message-time">${formatTime(message.createdAt)}${editedHTML}</div>
+        <div class="message-time">
+            ${formatTime(message.createdAt)}${editedHTML}
+            ${isSent ? `<i class="ph ph-checks message-status" style="${message.isRead ? 'color: #3b82f6;' : 'color: #9ca3af;'} margin-left: 4px; font-size: 14px;"></i>` : ''}
+        </div>
         <div class="message-actions">
             <i class="ph ph-smiley react-btn" title="React"></i>
             <i class="ph ph-arrow-u-up-left reply-btn" title="Reply"></i>

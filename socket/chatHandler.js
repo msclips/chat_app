@@ -1020,6 +1020,17 @@ function chatHandler(io) {
         } catch (err) {
             console.error('messages:read error:', err);
         }
+
+        // Emit read receipt to the conversation room so other users' clients can update the UI (e.g., turn ticks blue)
+        try {
+            socket.to(`conv:${parsedData?.conversationId}`).emit('messages:read_receipt', {
+                conversationId: parsedData?.conversationId,
+                userId: userId,
+                readAt: new Date()
+            });
+        } catch (err) {
+            console.error('messages:read_receipt emit error:', err);
+        }
     });
 
     // ─── Group Request Flow ────────────────────────────────────────────────────
