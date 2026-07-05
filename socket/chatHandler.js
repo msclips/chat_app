@@ -983,8 +983,9 @@ function chatHandler(io) {
     // Private: updates participants[].lastRead timestamp.
     // Group:   updates GroupMember.lastReadMessageId to the latest message.
     socket.on('messages:read', async (data) => {
+        let parsedData;
         try {
-            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            parsedData = typeof data === 'string' ? JSON.parse(data) : data;
             const { conversationId } = parsedData;
             if (!conversationId) return;
 
