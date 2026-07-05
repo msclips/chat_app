@@ -131,23 +131,7 @@ const sendChatNotification = async ({
              }
         }
 
-        let imageUrl = undefined;
-        if (conversationDb) {
-            if (isGroupChat && conversationDb.photoUrl) {
-                imageUrl = conversationDb.photoUrl;
-            } else if (!isGroupChat && chatData?.sender_id) {
-                try {
-                    const senderUser = await require('../models/User').findOne({
-                        where: { user_id: chatData.sender_id }
-                    });
-                    if (senderUser && senderUser.file_path) {
-                        imageUrl = senderUser.file_path;
-                    }
-                } catch (err) {
-                    console.error('[NOTIFICATION] Error fetching sender image:', err.message);
-                }
-            }
-        }
+
 
         if (!userIds || userIds.length === 0) {
             console.log("[NOTIFICATION] No user IDs (with tokens) provided. Skipping chat notification send.");
@@ -226,7 +210,6 @@ const sendChatNotification = async ({
                 uniqueTokens.add(user.android_token);
                 androidTokensCount++;
                 const notifObj = { title, body: description };
-                if (imageUrl) notifObj.imageUrl = imageUrl;
                 
                 messages.push({
                     token: user.android_token,
@@ -242,7 +225,6 @@ const sendChatNotification = async ({
                 uniqueTokens.add(user.web_token);
                 webTokensCount++;
                 const notifObj = { title, body: description };
-                if (imageUrl) notifObj.imageUrl = imageUrl;
                 
                 messages.push({
                     token: user.web_token,
