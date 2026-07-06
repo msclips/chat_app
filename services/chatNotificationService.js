@@ -360,6 +360,169 @@ const sendChatNotification = async ({
     }
 };
 
+/**
+ * Service to send reaction push notifications
+ * @param {Object} params
+ * @param {Array}  params.userIds          - Array of { user_id, android_token, web_token }
+ * @param {String} params.reactorName      - Name of the user who reacted
+ * @param {String} params.emoji            - The emoji used for reaction
+ * @param {Object} params.chatData         - Payload (chat_id, message_id, sender_id, ...)
+ * @param {String} params.conversationName - Display name for the notification title (group name etc.)
+ */
+const sendReactionNotification = async ({
+    userIds,
+    reactorName,
+    emoji,
+    chatData,
+    conversationName
+}) => {
+    console.log("[NOTIFICATION] Function Started: sendReactionNotification");
+    
+    try {
+        if (!admin.apps.length) {
+            console.error("[NOTIFICATION] ❌ Firebase Admin SDK is NOT initialized.");
+            return;
+        }
+
+        const messaging = admin.messaging();
+        const chatType = chatData?.chat_type || 'direct';
+        const conversationId = chatData?.chat_id || '';
+
+        // Title: group/community shows group name, direct shows reactor name
+        const isGroupChat = chatType === 'group' || chatType === 'community';
+        const title = (isGroupChat && conversationName) ? conversationName : (reactorName || 'New Reaction');
+        const description = isGroupChat ? `${reactorName} reacted ${emoji} to your message` : `Reacted ${emoji} to your message`;
+
+        if (!userIds || userIds.length === 0) {
+            console.log("[NOTIFICATION] No user IDs (with tokens) provided. Skipping reaction notification send.");
+            return { totalTokens: 0, successCount: 0, failureCount: 0, failedTokens: [] };
+        }
+
+        const messages = [];
+        const uniqueTokens = new Set();
+        let androidTokensCount = 0;
+        let webTokensCount = 0;
+
+        userIds.forEach(user => {
+            const dataPayload = {
+                type: "reaction",
+                sender_name: reactorName || '',
+                action_reply: 'true',
+                ...convertObjectValuesToString(chatData)
+            };
+
+            const androidConfig = conversationId ? {
+                notification: {
+                    tag: conversationId,
+                    channelId: 'high_importance_channel',
+                },
+            } : undefined;
+
+            const apnsConfig = conversationId ? {
+                payload: {
+                    aps: { 
+                        'thread-id': conversationId,
+                        category: 'MESSAGE_ACTIONS'
+                    },
+                },
+            } : undefined;
+
+            if (user.android_token && !uniqueTokens.has(user.android_token)) {
+                uniqueTokens.add(user.android_token);
+                androidTokensCount++;
+                messages.push({
+                    token: user.android_token,
+                    notification: { title, body: description },
+                    data: dataPayload,
+                    ...(androidConfig ? { android: androidConfig } : {}),
+                    ...(apnsConfig ? { apns: apnsConfig } : {}),
+                });
+            }
+
+            if (user.web_token && !uniqueTokens.has(user.web_token)) {
+                uniqueTokens.add(user.web_token);
+                webTokensCount++;
+                messages.push({
+                    token: user.web_token,
+                    notification: { title, body: description },
+                    data: dataPayload,
+                });
+            }
+        });
+
+        console.log(`[NOTIFICATION] Total Android Tokens Count: ${androidTokensCount}`);
+        console.log(`[NOTIFICATION] Total Web Tokens Count: ${webTokensCount}`);
+        console.log(`[NOTIFICATION] Generated Messages Array Count: ${messages.length}`);
+
+        const batchSize = 500;
+        let totalSuccessCount = 0;
+        let totalFailureCount = 0;
+        const allFailedTokensDetails = [];
+
+        for (let i = 0; i < messages.length; i += batchSize) {
+            const batchMessages = messages.slice(i, i + batchSize);
+            const batchNo = Math.floor(i / batchSize) + 1;
+            
+            try {
+                const response = await messaging.sendEach(batchMessages);
+                totalSuccessCount += response.successCount;
+                totalFailureCount += response.failureCount;
+
+                if (response.failureCount > 0) {
+                    for (let index = 0; index < response.responses.length; index++) {
+                        const resp = response.responses[index];
+                        if (!resp.success) {
+                            const failedMsg = batchMessages[index];
+                            const originalUserIdEntry = userIds.find(u => u.android_token === failedMsg.token || u.web_token === failedMsg.token);
+                            
+                            allFailedTokensDetails.push({
+                                token: failedMsg.token,
+                                user_id: originalUserIdEntry ? originalUserIdEntry.user_id : 'unknown',
+                                error: resp.error?.message,
+                                errorCode: resp.error?.code
+                            });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`[NOTIFICATION] Error Sending Reaction Batch:`, err);
+                totalFailureCount += batchMessages.length;
+            }
+        }
+
+        const notificationRows = userIds.map(user => ({
+            user_id: user.user_id ?? null,
+            notification_title: title,
+            notification_details: description,
+            notification_type: 'reaction',
+            image_object: JSON.stringify(chatData),
+            is_viewed: 0,
+            is_active: 1,
+            created_at: new Date(),
+        }));
+
+        try {
+            // await NotificationHistoryDAL.CreateBulkData(notificationRows);
+        } catch (dbErr) {
+            console.error("[NOTIFICATION] Error saving reaction notification history:", dbErr);
+        }
+
+        const finalResponse = {
+            totalTokens: userIds.length,
+            successCount: totalSuccessCount,
+            failureCount: totalFailureCount,
+            failedTokens: allFailedTokensDetails
+        };
+
+        console.log(`[NOTIFICATION] Function Completed: sendReactionNotification`);
+        return finalResponse;
+
+    } catch (error) {
+        console.error("[NOTIFICATION] Failed to send reaction push notifications:", error);
+    }
+};
+
 module.exports = {
-    sendChatNotification
+    sendChatNotification,
+    sendReactionNotification
 };

@@ -5,7 +5,7 @@ const Group = require('../models/Group');
 const GroupMember = require('../models/GroupMember');
 const UserToken = require('../models/UserToken');
 const { addSocket, removeSocket, getSockets } = require('./socketManager');
-const { sendChatNotification } = require('../services/chatNotificationService');
+const { sendChatNotification, sendReactionNotification } = require('../services/chatNotificationService');
 function chatHandler(io) {
   io.on('connection', (socket) => {
     const userId = socket.user.id;
@@ -510,6 +510,42 @@ function chatHandler(io) {
         const messageData = message.toObject();
         socket.emit('message:updated', messageData);
         socket.to(`conv:${message.conversationId}`).emit('message:updated', messageData);
+
+        // Notify the message sender about the reaction
+        if (emoji && emoji.trim() !== '' && message.senderId.toString() !== userId.toString()) {
+          try {
+            const tokenData = await UserToken.findOne({
+                where: { user_id: message.senderId.toString(), is_active: true }
+            });
+
+            if (tokenData) {
+                const conversation = await Conversation.findById(message.conversationId);
+                const userTokensToNotify = [{
+                    user_id: message.senderId.toString(),
+                    android_token: tokenData.android_token,
+                    web_token: tokenData.web_token
+                }];
+
+                await sendReactionNotification({
+                    userIds: userTokensToNotify,
+                    reactorName: username,
+                    emoji: emoji,
+                    conversationName: conversation ? (conversation.groupName || conversation.communityName || username) : username,
+                    chatData: {
+                        chat_id: message.conversationId.toString(),
+                        chat_type: conversation ? conversation.type : 'direct',
+                        group_id: conversation ? (conversation.groupId ? conversation.groupId.toString() : (conversation.communityId ? conversation.communityId.toString() : '')) : '',
+                        message_id: message._id.toString(),
+                        sender_id: userId, // the reactor
+                        sender_name: username,
+                        msg_type: 'reaction'
+                    }
+                });
+            }
+          } catch (notifyErr) {
+             console.error('[NOTIFICATION] Failed to trigger reaction push notification:', notifyErr);
+          }
+        }
       } catch (err) {
         console.error('Message react error:', err);
         socket.emit('message:error', { error: 'Failed to react to message' });
