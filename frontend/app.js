@@ -20,6 +20,7 @@ const activeChat = document.getElementById('active-chat');
 const noChatSelected = document.getElementById('no-chat-selected');
 const messageForm = document.getElementById('message-form');
 const messageInput = document.getElementById('message-input');
+const typingIndicator = document.getElementById('typing-indicator');
 const chatWithName = document.getElementById('chat-with-name');
 const logoutBtn = document.getElementById('logout-btn');
 const newChatBtn = document.getElementById('new-chat-btn');
@@ -436,6 +437,19 @@ function initSocket() {
                 });
         }
     });
+
+    socket.on('typing:start', ({ conversationId, username }) => {
+        if (conversationId === activeConversationId && typingIndicator) {
+            typingIndicator.textContent = `${username} is typing...`;
+            typingIndicator.classList.remove('hidden');
+        }
+    });
+
+    socket.on('typing:stop', ({ conversationId, username }) => {
+        if (conversationId === activeConversationId && typingIndicator) {
+            typingIndicator.classList.add('hidden');
+        }
+    });
 }
 
 // --- Data Fetching ---
@@ -778,6 +792,7 @@ function selectConversation(id, name, isCommunity = false, canSend = true) {
     // Clear reply and edit state on chat switch
     cancelReply();
     cancelEdit();
+    if (typingIndicator) typingIndicator.classList.add('hidden');
 
     messagesContainer.innerHTML = '<div class="loading-messages">Loading history...</div>';
     fetchMessages(id);
@@ -2038,6 +2053,22 @@ if (actionRemoveMember) {
                 memberActionModal.classList.add('hidden');
             }
         }
+    });
+}
+
+// Typing Indicator logic
+let typingTimeout = null;
+if (messageInput) {
+    messageInput.addEventListener('input', () => {
+        if (!activeConversationId || !socket) return;
+        
+        socket.emit('typing:start', { conversationId: activeConversationId });
+        
+        if (typingTimeout) clearTimeout(typingTimeout);
+        
+        typingTimeout = setTimeout(() => {
+            socket.emit('typing:stop', { conversationId: activeConversationId });
+        }, 2000);
     });
 }
 

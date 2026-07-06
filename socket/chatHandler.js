@@ -48,6 +48,21 @@ function chatHandler(io) {
       }
     });
 
+    // Typing Indicators
+    socket.on('typing:start', (data) => {
+        const { conversationId } = data;
+        if (conversationId) {
+            socket.to(`conv:${conversationId}`).emit('typing:start', { conversationId, username });
+        }
+    });
+
+    socket.on('typing:stop', (data) => {
+        const { conversationId } = data;
+        if (conversationId) {
+            socket.to(`conv:${conversationId}`).emit('typing:stop', { conversationId, username });
+        }
+    });
+
     // Send Message
     socket.on('message:send', async (data) => {
       try {
