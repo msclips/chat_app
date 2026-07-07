@@ -48,19 +48,41 @@ function chatHandler(io) {
       }
     });
 
-    // Typing Indicators
-    socket.on('typing:start', (data) => {
-        const { conversationId } = data;
-        if (conversationId) {
-            socket.to(`conv:${conversationId}`).emit('typing:start', { conversationId, username });
+    // Typing Indicators.
+    // Deliver TWO ways for reliability:
+    //  1) Room broadcast (`socket.to('conv:X')`) — how the web client receives it.
+    //  2) Direct-to-socket via getSockets() — reaches recipients whose socket is
+    //     NOT currently in the room (common on mobile after a reconnect). Typing
+    //     is the only feature that was room-only; messages already fan out this way.
+    const emitTypingToParticipants = async (conversationId, event) => {
+        try {
+            const conversation = await Conversation.findById(conversationId);
+            if (!conversation || !Array.isArray(conversation.participants)) return;
+            for (const p of conversation.participants) {
+                if (p.userId === userId) continue; // don't echo back to the sender
+                const sockets = getSockets(p.userId);
+                if (!sockets) continue;
+                for (const sid of sockets) {
+                    io.to(sid).emit(event, { conversationId, username });
+                }
+            }
+        } catch (err) {
+            console.error(`[TYPING] direct-emit error for ${conversationId}:`, err.message);
         }
+    };
+
+    socket.on('typing:start', async (data) => {
+        const { conversationId } = data;
+        if (!conversationId) return;
+        socket.to(`conv:${conversationId}`).emit('typing:start', { conversationId, username });
+        await emitTypingToParticipants(conversationId, 'typing:start');
     });
 
-    socket.on('typing:stop', (data) => {
+    socket.on('typing:stop', async (data) => {
         const { conversationId } = data;
-        if (conversationId) {
-            socket.to(`conv:${conversationId}`).emit('typing:stop', { conversationId, username });
-        }
+        if (!conversationId) return;
+        socket.to(`conv:${conversationId}`).emit('typing:stop', { conversationId, username });
+        await emitTypingToParticipants(conversationId, 'typing:stop');
     });
 
     // Send Message
