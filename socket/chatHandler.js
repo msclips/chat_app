@@ -1122,13 +1122,28 @@ function chatHandler(io) {
             console.error('messages:read error:', err);
         }
 
-        // Emit read receipt to the conversation room so other users' clients can update the UI (e.g., turn ticks blue)
+        // Emit read receipt so other users' clients can update the UI (turn ticks blue).
+        // Deliver TWO ways for reliability (same fix as typing + the /mark-read route):
+        //  1) Room broadcast — how clients joined to the room (e.g. web) receive it.
+        //  2) Direct-to-socket via getSockets() — reaches recipients whose socket is
+        //     NOT in the room (mobile after background/reconnect), so ticks turn blue
+        //     immediately on foreground instead of only on the next chat re-open.
         try {
-            socket.to(`conv:${parsedData?.conversationId}`).emit('messages:read_receipt', {
-                conversationId: parsedData?.conversationId,
-                userId: userId,
-                readAt: new Date()
-            });
+            const cid = parsedData?.conversationId;
+            const payload = { conversationId: cid, userId: userId, readAt: new Date() };
+            socket.to(`conv:${cid}`).emit('messages:read_receipt', payload);
+
+            const conv = await Conversation.findById(cid);
+            if (conv && Array.isArray(conv.participants)) {
+                for (const p of conv.participants) {
+                    if (p.userId === userId) continue; // don't echo to the reader
+                    const sockets = getSockets(p.userId);
+                    if (!sockets) continue;
+                    for (const sid of sockets) {
+                        io.to(sid).emit('messages:read_receipt', payload);
+                    }
+                }
+            }
         } catch (err) {
             console.error('messages:read_receipt emit error:', err);
         }
