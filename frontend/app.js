@@ -1741,8 +1741,13 @@ function renderGroupInfoMembers(filter = '') {
     if (!groupAdminsList || !groupParticipantsList) return;
     groupAdminsList.innerHTML = '';
     groupParticipantsList.innerHTML = '';
+    const groupBlockedList = document.getElementById('group-blocked-list');
+    const groupBlockedContainer = document.getElementById('group-blocked-container');
+    if (groupBlockedList) groupBlockedList.innerHTML = '';
 
     const filteredMembers = currentGroupMembers.filter(m => m.username.toLowerCase().includes(filter.toLowerCase()));
+
+    let blockedCount = 0;
 
     filteredMembers.forEach(member => {
         const div = document.createElement('div');
@@ -1786,12 +1791,23 @@ function renderGroupInfoMembers(filter = '') {
             });
         }
 
-        if (member.role === 'admin') {
+        if (member.status === 'blocked') {
+            if (groupBlockedList) groupBlockedList.appendChild(div);
+            blockedCount++;
+        } else if (member.role === 'admin') {
             groupAdminsList.appendChild(div);
         } else {
             groupParticipantsList.appendChild(div);
         }
     });
+
+    if (groupBlockedContainer) {
+        if (blockedCount > 0) {
+            groupBlockedContainer.style.display = 'block';
+        } else {
+            groupBlockedContainer.style.display = 'none';
+        }
+    }
 }
 
 if (groupInfoSearch) {
@@ -2013,6 +2029,7 @@ const memberActionName = document.getElementById('member-action-name');
 const actionMakeAdmin = document.getElementById('action-make-admin');
 const actionBlockMember = document.getElementById('action-block-member');
 const actionRemoveMember = document.getElementById('action-remove-member');
+const actionUnblockMember = document.getElementById('action-unblock-member');
 let currentActionMember = null;
 
 function openMemberActionModal(member) {
@@ -2021,6 +2038,7 @@ function openMemberActionModal(member) {
 
     if (actionMakeAdmin) actionMakeAdmin.style.display = member.role === 'admin' ? 'none' : 'flex';
     if (actionBlockMember) actionBlockMember.style.display = member.status === 'blocked' ? 'none' : 'flex';
+    if (actionUnblockMember) actionUnblockMember.style.display = member.status === 'blocked' ? 'flex' : 'none';
 
     if (memberActionModal) memberActionModal.classList.remove('hidden');
 }
@@ -2045,6 +2063,17 @@ if (actionBlockMember) {
         if (currentActionMember && currentGroupInfo) {
             if (confirm(`Block ${currentActionMember.username} from the group?`)) {
                 if (socket) socket.emit('group:admin_block_member', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
+                memberActionModal.classList.add('hidden');
+            }
+        }
+    });
+}
+
+if (actionUnblockMember) {
+    actionUnblockMember.addEventListener('click', () => {
+        if (currentActionMember && currentGroupInfo) {
+            if (confirm(`Unblock ${currentActionMember.username}?`)) {
+                if (socket) socket.emit('group:admin_unblock_member', { groupId: currentGroupInfo.groupId, targetUserId: currentActionMember.userId });
                 memberActionModal.classList.add('hidden');
             }
         }

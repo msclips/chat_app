@@ -230,6 +230,13 @@
                                 <!-- Participants -->
                             </div>
                         </div>
+
+                        <div id="group-blocked-container" style="display: none; margin-top: 24px;">
+                            <h4 style="color: #ef4444; font-size: 13px; margin-bottom: 12px;">Blocked Users</h4>
+                            <div id="group-blocked-list" class="users-list" style="padding: 0;">
+                                <!-- Blocked users -->
+                            </div>
+                        </div>
                     </div>
 
                     <div style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 12px;">
@@ -276,6 +283,9 @@
                     </button>
                     <button id="action-block-member" class="btn" style="width: 100%; justify-content: flex-start; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444;">
                         <i class="ph ph-prohibit"></i> Block from Group
+                    </button>
+                    <button id="action-unblock-member" class="btn" style="width: 100%; justify-content: flex-start; background: rgba(34, 197, 94, 0.05); color: #22c55e; border: 1px solid #22c55e; display: none;">
+                        <i class="ph ph-check-circle"></i> Unblock User
                     </button>
                     <button id="action-remove-member" class="btn" style="width: 100%; justify-content: flex-start; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444;">
                         <i class="ph ph-trash"></i> Remove from Group

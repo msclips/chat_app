@@ -934,6 +934,33 @@ function chatHandler(io) {
         }
     });
 
+    socket.on('group:admin_unblock_member', async (data) => {
+        try {
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            const { groupId, targetUserId } = parsedData;
+
+            const adminCheck = await GroupMember.findOne({ groupId, userId, role: 'admin', status: 'approved' });
+            if (!adminCheck) return socket.emit('group:error', { error: 'Only admins can unblock members' });
+
+            await GroupMember.updateOne(
+                { groupId, userId: targetUserId }, 
+                { $set: { status: 'approved' }, $unset: { blockedAt: 1 } }
+            );
+            
+            const group = await Group.findById(groupId);
+            if (group) {
+                io.to(`conv:${group.conversationId}`).emit('group:member_updated', { groupId, userId: targetUserId, status: 'approved' });
+                
+                const sockets = getSockets(targetUserId);
+                if (sockets) sockets.forEach(sid => {
+                    io.sockets.sockets.get(sid)?.join(`conv:${group.conversationId}`);
+                });
+            }
+        } catch (err) {
+            console.error('Group unblock member error:', err);
+        }
+    });
+
     socket.on('group:leave', async (data) => {
         try {
             let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
