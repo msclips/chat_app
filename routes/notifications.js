@@ -157,6 +157,22 @@ router.post('/mark-read', async (req, res) => {
       readByUserId: numericUserId,
     });
 
+    // Fallback for mobile clients not joined in the specific room
+    if (conversation && Array.isArray(conversation.participants)) {
+      for (const p of conversation.participants) {
+        if (p.userId === numericUserId) continue; // Don't echo to the sender
+        const sockets = getSockets(p.userId);
+        if (sockets) {
+          for (const sid of sockets) {
+            io.to(sid).emit('messages:read', {
+              conversationId,
+              readByUserId: numericUserId,
+            });
+          }
+        }
+      }
+    }
+
     res.status(200).json({ success: true });
   } catch (err) {
     console.error('[NOTIFICATIONS] /mark-read error:', err);
