@@ -317,10 +317,71 @@ router.get('/:id/messages', async (req, res) => {
       }
     }
 
-    const messages = await Message.find(messageQuery)
+    let messages = await Message.find(messageQuery)
       .populate('replyTo', 'senderName content')
       .sort({ createdAt: -1 }) // Newest first to get the latest 50
-      .limit(50);
+      .limit(50)
+      .lean();
+
+    if (conversation.type === 'private') {
+      const otherParticipant = conversation.participants.find(p => p.userId.toString() !== currentUser.id.toString());
+      const otherLastRead = otherParticipant ? otherParticipant.lastRead : null;
+      messages = messages.map(msg => {
+        if (msg.senderId.toString() === currentUser.id.toString() && otherLastRead && new Date(msg.createdAt) <= new Date(otherLastRead)) {
+          msg.isRead = true;
+        }
+        return msg;
+      });
+    } else if (conversation.type === 'group' && conversation.groupId) {
+      const otherMembers = await GroupMember.find({ groupId: conversation.groupId, userId: { $ne: currentUser.id }, status: 'approved' });
+      const lastReadMessageIds = otherMembers.map(m => m.lastReadMessageId).filter(id => id);
+      
+      let minLastReadTime = null;
+      // For WhatsApp logic, EVERY other member must have read up to this message
+      if (otherMembers.length > 0 && lastReadMessageIds.length === otherMembers.length) {
+        const uniqueIds = [...new Set(lastReadMessageIds.map(id => id.toString()))];
+        const lastReadMsgs = await Message.find({ _id: { $in: uniqueIds } }).select('createdAt').lean();
+        
+        const timeMap = {};
+        lastReadMsgs.forEach(m => { timeMap[m._id.toString()] = new Date(m.createdAt).getTime(); });
+        
+        const timestamps = lastReadMessageIds.map(id => timeMap[id.toString()]).filter(t => t);
+        
+        if (timestamps.length === otherMembers.length) {
+          minLastReadTime = new Date(Math.min(...timestamps));
+        }
+      }
+
+      messages = messages.map(msg => {
+        if (msg.senderId.toString() === currentUser.id.toString() && minLastReadTime && new Date(msg.createdAt) <= minLastReadTime) {
+          msg.isRead = true;
+        }
+        return msg;
+      });
+    } else if (conversation.type === 'community' && conversation.communityId) {
+      const allGroupUsers = await GroupUser.findAll({ 
+        where: { group_id: conversation.communityId, status: 1, is_active: 1 },
+        attributes: ['user_id', 'last_seen_at'] 
+      });
+      const otherUsers = allGroupUsers.filter(u => u.user_id.toString() !== currentUser.id.toString());
+      
+      let minLastReadTime = null;
+      if (otherUsers.length > 0) {
+        const timestamps = otherUsers.map(u => u.last_seen_at ? new Date(u.last_seen_at).getTime() : 0);
+        // If any user has never seen the chat (0), then not everyone has read it
+        if (!timestamps.includes(0)) {
+          minLastReadTime = new Date(Math.min(...timestamps));
+        }
+      }
+
+      messages = messages.map(msg => {
+        if (msg.senderId.toString() === currentUser.id.toString() && minLastReadTime && new Date(msg.createdAt) <= minLastReadTime) {
+          msg.isRead = true;
+        }
+        return msg;
+      });
+    }
+
     console.log(`Found ${messages.length} messages`);
     res.json(messages.reverse());
   } catch (err) {

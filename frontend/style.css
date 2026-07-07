@@ -1,15 +1,15 @@
 :root {
-    --primary: #8b5cf6;
-    --primary-light: #a78bfa;
-    --bg-dark: #0f172a;
-    --bg-card: rgba(30, 41, 59, 0.7);
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --border: rgba(255, 255, 255, 0.1);
-    --glass-bg: rgba(255, 255, 255, 0.03);
-    --msg-sent: #7c3aed;
-    --msg-received: #334155;
-    --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --primary: #00a884;
+    --primary-light: #00a884;
+    --bg-dark: #111b21;
+    --bg-card: #202c33;
+    --text-main: #e9edef;
+    --text-muted: #8696a0;
+    --border: #222e35;
+    --glass-bg: rgba(32, 44, 51, 0.5);
+    --msg-sent: #005c4b;
+    --msg-received: #202c33;
+    --shadow: 0 1px 3px rgba(11, 20, 26, 0.4);
 }
 
 * {
@@ -24,7 +24,6 @@ body {
     color: var(--text-main);
     height: 100vh;
     overflow: hidden;
-    background: radial-gradient(circle at top left, #1e1b4b, #0f172a);
 }
 
 #app {
@@ -138,7 +137,7 @@ body {
 
 /* --- CHAT VIEW --- */
 #chat-view {
-    background: rgba(15, 23, 42, 0.4);
+    background: #0b141a;
 }
 
 /* Sidebar */

@@ -232,11 +232,17 @@ function initSocket() {
 
     socket.on('messages:read_receipt', ({ conversationId, userId, readAt }) => {
         if (conversationId === activeConversationId) {
-            // Find all sent messages in this conversation and turn their ticks blue
-            const ticks = document.querySelectorAll('.message.sent .message-status');
-            ticks.forEach(tick => {
-                tick.style.color = '#3b82f6'; // Blue color
-            });
+            const conv = conversations.find(c => c._id === conversationId);
+            // In WhatsApp logic, groups need ALL members to read before turning blue.
+            // Since a live socket receipt only confirms ONE user read it, we only
+            // turn ticks blue instantly for private chats. For groups, it will 
+            // compute correctly when the history is fetched.
+            if (conv && conv.type === 'private') {
+                const ticks = document.querySelectorAll('.message.sent .message-status');
+                ticks.forEach(tick => {
+                    tick.style.color = '#3b82f6'; // Blue color
+                });
+            }
         }
     });
 
