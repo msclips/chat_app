@@ -549,21 +549,52 @@ function chatHandler(io) {
         socket.to(`conv:${message.conversationId}`).emit('message:updated', messageData);
 
         // Notify the message sender about the reaction
-        if (emoji && emoji.trim() !== '' && message.senderId.toString() !== userId.toString()) {
+        console.log(`[NOTIFICATION] Checking condition to send reaction notification...`);
+        console.log(`[NOTIFICATION] Emoji details: emoji="${emoji}", senderId="${message?.senderId}", reactorId="${userId}"`);
+        
+        let conditionMet = false;
+        try {
+            conditionMet = emoji && emoji.trim() !== '' && message.senderId.toString() !== userId.toString();
+        } catch (condErr) {
+            console.error('[NOTIFICATION] Error evaluating reaction notification condition:', condErr);
+        }
+
+        console.log(`[NOTIFICATION] Reaction notification condition met: ${conditionMet}`);
+
+        if (conditionMet) {
           try {
+            const senderIdStr = message.senderId.toString();
+            console.log(`[NOTIFICATION] Querying active UserToken for senderId string: "${senderIdStr}"`);
+            
             const tokenData = await UserToken.findOne({
-                where: { user_id: message.senderId.toString(), is_active: true }
+                where: { user_id: senderIdStr, is_active: true }
             });
 
+            console.log(`[NOTIFICATION] UserToken query result for user ${senderIdStr}:`, tokenData ? {
+                id: tokenData.id,
+                user_id: tokenData.user_id,
+                has_android_token: !!tokenData.android_token,
+                has_web_token: !!tokenData.web_token,
+                is_active: tokenData.is_active
+            } : 'null (No token found)');
+
             if (tokenData) {
+                console.log(`[NOTIFICATION] Fetching conversation for reaction notification: ${message.conversationId}`);
                 const conversation = await Conversation.findById(message.conversationId);
+                console.log(`[NOTIFICATION] Conversation query result:`, conversation ? {
+                    id: conversation._id,
+                    type: conversation.type,
+                    groupName: conversation.groupName,
+                    communityName: conversation.communityName
+                } : 'null (No conversation found)');
+
                 const userTokensToNotify = [{
-                    user_id: message.senderId.toString(),
+                    user_id: senderIdStr,
                     android_token: tokenData.android_token,
                     web_token: tokenData.web_token
                 }];
 
-                await sendReactionNotification({
+                const notificationPayload = {
                     userIds: userTokensToNotify,
                     reactorName: username,
                     emoji: emoji,
@@ -577,10 +608,18 @@ function chatHandler(io) {
                         sender_name: username,
                         msg_type: 'reaction'
                     }
-                });
+                };
+
+                console.log(`[NOTIFICATION] Invoking sendReactionNotification with payload:`, JSON.stringify(notificationPayload, null, 2));
+
+                await sendReactionNotification(notificationPayload);
+                console.log(`[NOTIFICATION] sendReactionNotification completed successfully.`);
+            } else {
+                console.log(`[NOTIFICATION] Skipping reaction notification send because no active token was found in database for sender: ${senderIdStr}`);
             }
           } catch (notifyErr) {
              console.error('[NOTIFICATION] Failed to trigger reaction push notification:', notifyErr);
+             console.error('[NOTIFICATION] Stack trace:', notifyErr.stack);
           }
         }
       } catch (err) {

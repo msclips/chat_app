@@ -377,6 +377,13 @@ const sendReactionNotification = async ({
     conversationName
 }) => {
     console.log("[NOTIFICATION] Function Started: sendReactionNotification");
+    console.log("[NOTIFICATION] Incoming Arguments:", JSON.stringify({
+        userIdsCount: userIds ? userIds.length : 0,
+        reactorName,
+        emoji,
+        chatData,
+        conversationName
+    }, null, 2));
     
     try {
         if (!admin.apps.length) {
@@ -388,10 +395,14 @@ const sendReactionNotification = async ({
         const chatType = chatData?.chat_type || 'direct';
         const conversationId = chatData?.chat_id || '';
 
+        console.log(`[NOTIFICATION] chatType: ${chatType}, conversationId: ${conversationId}`);
+
         // Title: group/community shows group name, direct shows reactor name
         const isGroupChat = chatType === 'group' || chatType === 'community';
         const title = (isGroupChat && conversationName) ? conversationName : (reactorName || 'New Reaction');
         const description = isGroupChat ? `${reactorName} reacted ${emoji} to your message` : `Reacted ${emoji} to your message`;
+
+        console.log(`[NOTIFICATION] Computed Title: "${title}", Description: "${description}"`);
 
         if (!userIds || userIds.length === 0) {
             console.log("[NOTIFICATION] No user IDs (with tokens) provided. Skipping reaction notification send.");
@@ -404,6 +415,7 @@ const sendReactionNotification = async ({
         let webTokensCount = 0;
 
         userIds.forEach(user => {
+            console.log(`[NOTIFICATION] Processing target user details:`, JSON.stringify(user));
             const dataPayload = {
                 type: "reaction",
                 sender_name: reactorName || '',
@@ -430,23 +442,31 @@ const sendReactionNotification = async ({
             if (user.android_token && !uniqueTokens.has(user.android_token)) {
                 uniqueTokens.add(user.android_token);
                 androidTokensCount++;
-                messages.push({
+                const msgObj = {
                     token: user.android_token,
                     notification: { title, body: description },
                     data: dataPayload,
                     ...(androidConfig ? { android: androidConfig } : {}),
                     ...(apnsConfig ? { apns: apnsConfig } : {}),
-                });
+                };
+                console.log(`[NOTIFICATION] Adding Android message for token: ${user.android_token}`, JSON.stringify(msgObj));
+                messages.push(msgObj);
+            } else if (user.android_token) {
+                console.log(`[NOTIFICATION] Android token already processed or duplicate: ${user.android_token}`);
             }
 
             if (user.web_token && !uniqueTokens.has(user.web_token)) {
                 uniqueTokens.add(user.web_token);
                 webTokensCount++;
-                messages.push({
+                const msgObj = {
                     token: user.web_token,
                     notification: { title, body: description },
                     data: dataPayload,
-                });
+                };
+                console.log(`[NOTIFICATION] Adding Web message for token: ${user.web_token}`, JSON.stringify(msgObj));
+                messages.push(msgObj);
+            } else if (user.web_token) {
+                console.log(`[NOTIFICATION] Web token already processed or duplicate: ${user.web_token}`);
             }
         });
 
@@ -459,22 +479,35 @@ const sendReactionNotification = async ({
         let totalFailureCount = 0;
         const allFailedTokensDetails = [];
 
+        console.log("[NOTIFICATION] Batch Processing Start (Reaction)");
+
         for (let i = 0; i < messages.length; i += batchSize) {
             const batchMessages = messages.slice(i, i + batchSize);
             const batchNo = Math.floor(i / batchSize) + 1;
+            console.log(`[NOTIFICATION] Batch Number: ${batchNo}`);
+            console.log(`[NOTIFICATION] Batch Message Count: ${batchMessages.length}`);
             
             try {
+                console.log(`[NOTIFICATION] Firebase Send Request Start (Reaction Batch ${batchNo})`);
                 const response = await messaging.sendEach(batchMessages);
+                console.log(`[NOTIFICATION] Firebase Send Response (Reaction Batch ${batchNo}):`, JSON.stringify(response, null, 2));
+
                 totalSuccessCount += response.successCount;
                 totalFailureCount += response.failureCount;
+
+                console.log(`[NOTIFICATION] Success Count (Reaction Batch ${batchNo}): ${response.successCount}`);
+                console.log(`[NOTIFICATION] Failure Count (Reaction Batch ${batchNo}): ${response.failureCount}`);
 
                 if (response.failureCount > 0) {
                     for (let index = 0; index < response.responses.length; index++) {
                         const resp = response.responses[index];
+                        console.log(`[NOTIFICATION] Individual Token Processing: ${batchMessages[index].token}`);
                         if (!resp.success) {
                             const failedMsg = batchMessages[index];
                             const originalUserIdEntry = userIds.find(u => u.android_token === failedMsg.token || u.web_token === failedMsg.token);
                             
+                            console.log(`[NOTIFICATION] Individual Token Failure Reason: ${resp.error?.message} (Code: ${resp.error?.code})`);
+
                             allFailedTokensDetails.push({
                                 token: failedMsg.token,
                                 user_id: originalUserIdEntry ? originalUserIdEntry.user_id : 'unknown',
@@ -486,10 +519,25 @@ const sendReactionNotification = async ({
                 }
             } catch (err) {
                 console.error(`[NOTIFICATION] Error Sending Reaction Batch:`, err);
+                console.error(`[NOTIFICATION] Complete Error Stack Trace:`, err.stack);
+                batchMessages.forEach(msg => {
+                    const originalUserIdEntry = userIds.find(u => u.android_token === msg.token || u.web_token === msg.token);
+                    allFailedTokensDetails.push({
+                        token: msg.token,
+                        user_id: originalUserIdEntry ? originalUserIdEntry.user_id : 'unknown',
+                        error: err.message,
+                        errorCode: 'batch-send-error'
+                    });
+                });
                 totalFailureCount += batchMessages.length;
             }
         }
 
+        console.log(`[NOTIFICATION] --- Reaction Notification Send Summary ---`);
+        console.log(`[NOTIFICATION] Total Successful Sends: ${totalSuccessCount}`);
+        console.log(`[NOTIFICATION] Total Failed Sends: ${totalFailureCount}`);
+
+        console.log(`[NOTIFICATION] Notification History Data Creation Start (Reaction)`);
         const notificationRows = userIds.map(user => ({
             user_id: user.user_id ?? null,
             notification_title: title,
@@ -500,11 +548,16 @@ const sendReactionNotification = async ({
             is_active: 1,
             created_at: new Date(),
         }));
+        console.log(`[NOTIFICATION] Notification History Data Creation Complete (Reaction)`);
 
         try {
+            console.log(`[NOTIFICATION] Notification History Insert Start (Reaction)`);
             // await NotificationHistoryDAL.CreateBulkData(notificationRows);
+            console.log(`[NOTIFICATION] Notification History Insert Response: (mocked/commented out)`);
+            console.log(`[NOTIFICATION] Notification History Insert Complete (Reaction)`);
         } catch (dbErr) {
             console.error("[NOTIFICATION] Error saving reaction notification history:", dbErr);
+            console.error("[NOTIFICATION] Complete Error Stack Trace:", dbErr.stack);
         }
 
         const finalResponse = {
@@ -514,11 +567,13 @@ const sendReactionNotification = async ({
             failedTokens: allFailedTokensDetails
         };
 
+        console.log(`[NOTIFICATION] Final Response Object:`, finalResponse);
         console.log(`[NOTIFICATION] Function Completed: sendReactionNotification`);
         return finalResponse;
 
     } catch (error) {
         console.error("[NOTIFICATION] Failed to send reaction push notifications:", error);
+        console.error("[NOTIFICATION] Complete Error Stack Trace:", error.stack);
     }
 };
 
