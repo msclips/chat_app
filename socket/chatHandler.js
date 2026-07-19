@@ -554,7 +554,12 @@ function chatHandler(io) {
         
         let conditionMet = false;
         try {
-            conditionMet = emoji && emoji.trim() !== '' && message.senderId.toString() !== userId.toString();
+            conditionMet = emoji && 
+                           emoji.trim() !== '' && 
+                           message && 
+                           message.senderId != null && 
+                           userId != null && 
+                           String(message.senderId) !== String(userId);
         } catch (condErr) {
             console.error('[NOTIFICATION] Error evaluating reaction notification condition:', condErr);
         }
@@ -563,15 +568,15 @@ function chatHandler(io) {
 
         if (conditionMet) {
           try {
-            const senderIdStr = message.senderId.toString();
-            console.log(`[NOTIFICATION] Querying active UserToken for senderId string: "${senderIdStr}"`);
+            const targetUserId = Number(message.senderId);
+            console.log(`[NOTIFICATION] Querying active UserToken for senderId as Number: ${targetUserId}`);
             
             const tokenData = await UserToken.findOne({
-                where: { user_id: senderIdStr, is_active: true }
+                where: { user_id: targetUserId, is_active: true }
             });
 
-            console.log(`[NOTIFICATION] UserToken query result for user ${senderIdStr}:`, tokenData ? {
-                id: tokenData.id,
+            console.log(`[NOTIFICATION] UserToken query result for user ${targetUserId}:`, tokenData ? {
+                id: tokenData.user_token_id || tokenData.id,
                 user_id: tokenData.user_id,
                 has_android_token: !!tokenData.android_token,
                 has_web_token: !!tokenData.web_token,
@@ -589,7 +594,7 @@ function chatHandler(io) {
                 } : 'null (No conversation found)');
 
                 const userTokensToNotify = [{
-                    user_id: senderIdStr,
+                    user_id: targetUserId,
                     android_token: tokenData.android_token,
                     web_token: tokenData.web_token
                 }];
@@ -615,7 +620,7 @@ function chatHandler(io) {
                 await sendReactionNotification(notificationPayload);
                 console.log(`[NOTIFICATION] sendReactionNotification completed successfully.`);
             } else {
-                console.log(`[NOTIFICATION] Skipping reaction notification send because no active token was found in database for sender: ${senderIdStr}`);
+                console.log(`[NOTIFICATION] Skipping reaction notification send because no active token was found in database for sender: ${targetUserId}`);
             }
           } catch (notifyErr) {
              console.error('[NOTIFICATION] Failed to trigger reaction push notification:', notifyErr);
