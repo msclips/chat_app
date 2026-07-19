@@ -599,10 +599,10 @@ function chatHandler(io) {
                     web_token: tokenData.web_token
                 }];
 
+                const isGroupChat = conversation && (conversation.type === 'group' || conversation.type === 'community');
                 const notificationPayload = {
                     userIds: userTokensToNotify,
-                    reactorName: username,
-                    emoji: emoji,
+                    senderName: username,
                     conversationName: conversation ? (conversation.groupName || conversation.communityName || username) : username,
                     chatData: {
                         chat_id: message.conversationId.toString(),
@@ -611,14 +611,17 @@ function chatHandler(io) {
                         message_id: message._id.toString(),
                         sender_id: userId, // the reactor
                         sender_name: username,
+                        message_content: isGroupChat
+                            ? `${username} reacted ${emoji} to your message`
+                            : `Reacted ${emoji} to your message`,
                         msg_type: 'reaction'
                     }
                 };
 
-                console.log(`[NOTIFICATION] Invoking sendReactionNotification with payload:`, JSON.stringify(notificationPayload, null, 2));
+                console.log(`[NOTIFICATION] Invoking sendChatNotification for reaction with payload:`, JSON.stringify(notificationPayload, null, 2));
 
-                await sendReactionNotification(notificationPayload);
-                console.log(`[NOTIFICATION] sendReactionNotification completed successfully.`);
+                await sendChatNotification(notificationPayload);
+                console.log(`[NOTIFICATION] sendChatNotification for reaction completed successfully.`);
             } else {
                 console.log(`[NOTIFICATION] Skipping reaction notification send because no active token was found in database for sender: ${targetUserId}`);
             }

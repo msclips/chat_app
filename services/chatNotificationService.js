@@ -110,13 +110,15 @@ const sendChatNotification = async ({
         const isGroupChat = chatType === 'group' || chatType === 'community';
         const title = (isGroupChat && conversationName) ? conversationName : (senderName || 'New Message');
 
+        const isReaction = chatData?.msg_type === 'reaction';
+
         // Fetch recent messages ONCE for the conversation to find unread ones per user
         let recentMessages = [];
         let conversationDb = null;
         let groupMemberships = [];
         let communityMemberships = [];
 
-        if (conversationId) {
+        if (conversationId && !isReaction) {
              recentMessages = await Message.find({ conversationId })
                 .sort({ createdAt: -1 })
                 .limit(10) // Fetch up to 10 recent messages
@@ -174,7 +176,9 @@ const sendChatNotification = async ({
             }
 
             // Build the body string containing only their unread messages
-            const description = buildUnreadNotificationBody(unreadForUser, chatType, senderName, chatData);
+            const description = isReaction
+                ? (chatData?.message_content || `${senderName} reacted to your message`)
+                : buildUnreadNotificationBody(unreadForUser, chatType, senderName, chatData);
             user.computed_description = description;
 
             const dataPayload = {
