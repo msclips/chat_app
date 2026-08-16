@@ -7,8 +7,8 @@ const GroupRequest = require('../models/GroupRequest');
 const { Op } = require('sequelize');
 
 function getRequestUser(req) {
-  const userId = req.headers['x-user-id'] || req.body.userId || req.query.userId || req.body.id || req.query.id;
-  const username = req.headers['x-user-name'] || req.body.username || req.query.username || req.body.user_name || req.query.user_name;
+  const userId = req.body.userId || req.query.userId || req.body.id || req.query.id || req.headers['x-user-id'];
+  const username = req.body.username || req.query.username || req.body.user_name || req.query.user_name || req.headers['x-user-name'];
 
   return {
     id: userId ? (isNaN(userId) ? userId : Number(userId)) : 1,
