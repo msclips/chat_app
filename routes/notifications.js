@@ -7,8 +7,8 @@ const { getSockets } = require('../socket/socketManager');
 const { sendChatNotification } = require('../services/chatNotificationService');
 
 function getRequestUser(req) {
-  const userId = req.body.userId || req.query.userId || req.body.id || req.query.id || req.headers['x-user-id'];
-  const username = req.body.username || req.query.username || req.body.user_name || req.query.user_name || req.headers['x-user-name'];
+  const userId = req.body?.userId || req.query?.userId || req.headers['x-user-id'];
+  const username = req.body?.username || req.query?.username || req.body?.user_name || req.query?.user_name || req.headers['x-user-name'];
   return {
     id: userId ? (isNaN(userId) ? userId : Number(userId)) : null,
     user_name: username || 'User',

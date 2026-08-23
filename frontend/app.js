@@ -176,7 +176,28 @@ async function initApp() {
 }
 
 logoutBtn.addEventListener('click', () => {
+    // 1. Disconnect and clean up the socket connection
+    if (socket) {
+        socket.removeAllListeners();  // Remove all event listeners
+        socket.disconnect();          // Disconnect from server
+        socket = null;                // Clear the reference
+    }
+
+    // 2. Clear all user state and cached data
+    currentUser = null;
+    activeConversationId = null;
+    activeCommunityId = null;
+    conversations = [];
+    communities = [];
+    allUsers = [];
+    muteStates = {};
+    replyingToMessage = null;
+    editingMessageId = null;
+
+    // 3. Clear stored user from localStorage
     localStorage.removeItem('user');
+
+    // 4. Reload to show login screen with completely fresh state
     window.location.reload();
 });
 
@@ -210,7 +231,14 @@ communitiesTab.addEventListener('click', () => {
 // --- Socket.IO Functions ---
 
 function initSocket() {
-    // Authenticate directly using userId and username parameters (no token)
+    // If there's an existing socket, fully disconnect and clean up first
+    if (socket) {
+        socket.removeAllListeners();
+        socket.disconnect();
+        socket = null;
+    }
+
+    // Create a fresh socket with the current user's auth credentials
     socket = io(API_URL, {
         auth: {
             userId: currentUser.id,
@@ -220,6 +248,12 @@ function initSocket() {
 
     socket.on('connect', () => {
         console.log('✅ Connected to socket as:', currentUser.user_name);
+        // Re-join all conversation rooms on every connect/reconnect
+        if (conversations.length > 0) {
+            const ids = conversations.map(c => c._id);
+            socket.emit('conversations:join', ids);
+            console.log('🔄 Re-joined', ids.length, 'conversation rooms after connect');
+        }
     });
 
     socket.on('message:new', (message) => {
